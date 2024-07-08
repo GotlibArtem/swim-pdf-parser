@@ -70,8 +70,9 @@ def report_setup_view(request, session_id):
     """
     Отображает форму для настройки таблиц/графиков отчета.
     """
-    
+
     session = get_object_or_404(models.ParsingSession, id=session_id)
+    participants = session.protocoldata_set.order_by('final_category', 'start_position')
 
     if request.method == 'POST':
         form = ReportSetupForm(request.POST)
@@ -83,10 +84,24 @@ def report_setup_view(request, session_id):
 
             # Сохранение статусов моделей
             for model, form_field in SETTINGS_MAPPING.items():
-                model.objects.update_or_create(
-                    parsing_session=session,
-                    defaults={'status': form.cleaned_data[form_field]}
-                )
+                status = form.cleaned_data[form_field]
+                data = {}
+                data_field_prefix = f"{form_field}_data_"
+                for participant in participants:
+                    field_name = f"{data_field_prefix}{participant.id}"
+                    if field_name in request.POST:
+                        data[str(participant.id)] = request.POST[field_name]
+
+                if hasattr(model, 'data'):
+                    model.objects.update_or_create(
+                        parsing_session=session,
+                        defaults={'status': status, 'data': data}
+                    )
+                else:
+                    model.objects.update_or_create(
+                        parsing_session=session,
+                        defaults={'status': status}
+                    )
 
         return redirect('session_results', session_id=session_id)
     else:
@@ -97,10 +112,13 @@ def report_setup_view(request, session_id):
         }
         form = ReportSetupForm(initial=initial_data)
 
+
     return render(
         request,
         'parsing/report_setup.html',
-        {'form': form, 'session': session}
+        {'form': form,
+         'session': session,
+         'participants': participants}
     )
 
 
@@ -128,10 +146,15 @@ def session_results_view(request, session_id):
     session_charts = ChartGenerator(session, protocol_data)
 
     charts = {
+        'start_distance_table': session_charts.generate_start_distance_table() if active_settings.get('status_start_distance') else None,
         'average_speed_chart': session_charts.generate_average_speed_chart() if active_settings.get('status_average_speed') else None,
         'average_speed_table': session_charts.generate_average_speed_table() if active_settings.get('status_average_speed') else None,
+        'number_cycles_chart': session_charts.generate_number_cycles_chart() if active_settings.get('status_number_cycles') else None,
+        'pace_table': session_charts.generate_pace_table() if active_settings.get('status_pace') and active_settings.get('status_number_cycles') else None,
         'speed_drop_table': session_charts.generate_speed_drop_table() if active_settings.get('status_speed_drop') else None,
         'leader_gap_table': session_charts.generate_leader_gap_table() if active_settings.get('status_leader_gap') else None,
+        'underwater_part_table': session_charts.generate_underwater_part_table() if active_settings.get('status_underwater_part') else None,
+        'underwater_part_chart': session_charts.generate_underwater_part_chart() if active_settings.get('status_underwater_part') else None,
         'start_reaction_table': session_charts.generate_best_start_reaction_table() if active_settings.get('status_best_start_reaction') else None,
         'start_reaction_chart': session_charts.generate_best_start_reaction_chart() if active_settings.get('status_best_start_reaction') else None,
         'start_finish_difference_table': session_charts.generate_start_finish_difference_table() if active_settings.get('status_best_start_finish_percentage') else None,

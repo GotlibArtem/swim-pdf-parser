@@ -70,14 +70,9 @@
                                                 <label class="form-check-label" for="statusStartDistance">{{ form.status_start_distance.label }}</label>
                                             </div>
                                             <div class="mt-3" id="start-distance-fields">
-                                                <input type="text" class="form-control mb-2" placeholder="1-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="2-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="3-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="4-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="5-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="6-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="7-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="8-я дорожка">
+                                                {% for participant in participants %}
+                                                    <input type="text" class="form-control mb-2" name="status_start_distance_data_{{ participant.id }}" placeholder="{{ participant.initials }} ({{ participant.start_position }}-я дорожка, {{ participant.final_category }})">
+                                                {% endfor %}
                                             </div>
                                         </div>
                                     </div>
@@ -112,14 +107,9 @@
                                                 <label class="form-check-label" for="statusNumberCycles">{{ form.status_number_cycles.label }}</label>
                                             </div>
                                             <div class="mt-3" id="number-cycles-fields">
-                                                <input type="text" class="form-control mb-2" placeholder="1-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="2-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="3-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="4-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="5-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="6-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="7-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="8-я дорожка">
+                                                {% for participant in participants %}
+                                                    <input type="text" class="form-control mb-2" name="status_number_cycles_data_{{ participant.id }}" placeholder="{{ participant.initials }} ({{ participant.start_position }}-я дорожка, {{ participant.final_category }})">
+                                                {% endfor %}
                                             </div>
                                         </div>
                                     </div>
@@ -138,14 +128,9 @@
                                                 <label class="form-check-label" for="statusPace">{{ form.status_pace.label }}</label>
                                             </div>
                                             <div class="mt-3" id="pace-fields">
-                                                <input type="text" class="form-control mb-2" placeholder="1-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="2-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="3-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="4-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="5-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="6-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="7-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="8-я дорожка">
+                                                {% for participant in participants %}
+                                                    <input type="text" class="form-control mb-2" name="status_pace_data_{{ participant.id }}" placeholder="{{ participant.initials }} ({{ participant.start_position }}-я дорожка, {{ participant.final_category }})">
+                                                {% endfor %}
                                             </div>
                                         </div>
                                     </div>
@@ -196,14 +181,9 @@
                                                 <label class="form-check-label" for="statusUnderwaterPart">{{ form.status_underwater_part.label }}</label>
                                             </div>
                                             <div class="mt-3" id="underwater-part-fields">
-                                                <input type="text" class="form-control mb-2" placeholder="1-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="2-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="3-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="4-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="5-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="6-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="7-я дорожка">
-                                                <input type="text" class="form-control mb-2" placeholder="8-я дорожка">
+                                                {% for participant in participants %}
+                                                    <input type="text" class="form-control mb-2" name="status_underwater_part_data_{{ participant.id }}" placeholder="{{ participant.initials }} ({{ participant.start_position }}-я дорожка, {{ participant.final_category }})">
+                                                {% endfor %}
                                             </div>
                                         </div>
                                     </div>

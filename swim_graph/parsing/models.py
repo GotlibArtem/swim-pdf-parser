@@ -155,6 +155,11 @@ class StartDistance(models.Model):
         verbose_name='Статус',
         db_comment='Статус',
     )
+    data = models.JSONField(
+        default=dict,
+        verbose_name='Данные',
+        db_comment='Данные'
+    )
 
     def __str__(self) -> str:
         return f'Стартовый отрезок (статус): {self.status}'
@@ -201,6 +206,11 @@ class NumberCycles(models.Model):
         verbose_name='Статус',
         db_comment='Статус',
     )
+    data = models.JSONField(
+        default=dict,
+        verbose_name='Данные',
+        db_comment='Данные'
+    )
 
     def __str__(self) -> str:
         return f'Кол-во циклов на лучшем отрезке (статус): {self.status}'
@@ -223,6 +233,11 @@ class Pace(models.Model):
         null=False,
         verbose_name='Статус',
         db_comment='Статус',
+    )
+    data = models.JSONField(
+        default=dict,
+        verbose_name='Данные',
+        db_comment='Данные'
     )
 
     def __str__(self) -> str:
@@ -292,6 +307,11 @@ class UnderwaterPart(models.Model):
         null=False,
         verbose_name='Статус',
         db_comment='Статус',
+    )
+    data = models.JSONField(
+        default=dict,
+        verbose_name='Данные',
+        db_comment='Данные'
     )
 
     def __str__(self) -> str:

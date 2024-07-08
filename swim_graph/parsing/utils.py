@@ -9,7 +9,9 @@ from swim_graph_utils.constants import (
     ParsingKeywords, SwimLength, INTERMEDIATE_SWIM_LENGTHS
 )
 from .models import (
-    ProtocolData, ParsingSession, SwimSplitTime, ParsingSettings
+    ProtocolData, ParsingSession, SwimSplitTime,
+    ParsingSettings, StartDistance, NumberCycles,
+    Pace, UnderwaterPart
 )
 
 
@@ -438,9 +440,9 @@ class ChartGenerator:
         )
 
         config = {
-            'displayModeBar': True,
+            'displayModeBar': False,
             'displaylogo': False,
-            'modeBarButtonsToAdd': ['toImage', 'resetScale2d', 'hoverClosestCartesian', 'hoverCompareCartesian', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetViews', 'toImage', 'toggleSpikelines']
+            'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
         }
 
         heat_map = fig.to_html(full_html=False, config=config)
@@ -491,7 +493,6 @@ class ChartGenerator:
 
         return table_html
 
-
     def generate_average_speed_chart(self) -> str:
         """
         Генерирует HTML код для столбчатой диаграммы средней скорости.
@@ -536,14 +537,17 @@ class ChartGenerator:
             xaxis_tickangle=-45,
             yaxis_title='Скорость (м/сек)',
             legend_title='Дистанции',
-            width=2000,
-            height=500
         )
 
-        speed_chart = fig.to_html(full_html=False)
+        config = {
+            'displayModeBar': False,
+            'displaylogo': False,
+            'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+        }
+
+        speed_chart = fig.to_html(full_html=False, config=config)
 
         return speed_chart
-
 
     def generate_speed_drop_table(self) -> str:
         """
@@ -656,7 +660,6 @@ class ChartGenerator:
 
         return table_html
 
-
     def generate_best_start_reaction_table(self) -> str:
         """
         Генерирует HTML код для таблицы лучшей стартовой реакции.
@@ -711,11 +714,15 @@ class ChartGenerator:
         fig.update_layout(
             xaxis_tickangle=-45,
             yaxis_title='Стартовая реакция (сек)',
-            width=900,
-            height=500
         )
 
-        start_reaction_chart = fig.to_html(full_html=False)
+        config = {
+            'displayModeBar': False,
+            'displaylogo': False,
+            'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+        }
+
+        start_reaction_chart = fig.to_html(full_html=False, config=config)
 
         return start_reaction_chart
 
@@ -786,10 +793,240 @@ class ChartGenerator:
 
         fig.update_layout(
             yaxis=dict(title='Процент изменения (%)'),
-            width=900,
-            height=500
         )
 
-        start_finish_difference_chart = fig.to_html(full_html=False)
+        config = {
+            'displayModeBar': False,
+            'displaylogo': False,
+            'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+        }
+
+        start_finish_difference_chart = fig.to_html(full_html=False, config=config)
 
         return start_finish_difference_chart
+
+    def generate_start_distance_table(self) -> str:
+        """
+        Генерирует HTML код для таблицы стартового отрезка 0-15.
+        """
+        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
+        data = []
+
+        col_labels = [participant.initials for participant in participants]
+        row_labels = ['Стартовый отрезок 0-15, сек']
+
+        # Получаем данные для стартового отрезка
+        start_distance_data = StartDistance.objects.filter(parsing_session=self.session).first()
+        if start_distance_data:
+            start_distance_values = start_distance_data.data
+            row = [start_distance_values.get(str(participant.id), '') for participant in participants]
+            data.append(row)
+        
+        # Генерируем HTML таблицы
+        table_html = "<div class='table-responsive'> <table id='speed-table' class='table table-bordered table-hover'><thead><tr><th></th>"
+        for col in col_labels:
+            table_html += f"<th>{col}</th>"
+        table_html += "</tr></thead><tbody class='text-center align-middle'>"
+
+        for i, row in enumerate(data):
+            table_html += f"<tr><td>{row_labels[i]}</td>"
+            for cell in row:
+                table_html += f"<td>{cell}</td>"
+            table_html += "</tr>"
+
+        table_html += "</tbody></table> </div>"
+
+        return table_html
+
+    def generate_number_cycles_chart(self) -> str:
+        """
+        Генерирует HTML код для столбчатой диаграммы количества циклов на лучшем отрезке.
+        """
+        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
+        col_labels = [participant.initials for participant in participants]
+
+        # Получаем данные для количества циклов
+        number_cycles_data = NumberCycles.objects.filter(parsing_session=self.session).first()
+        if number_cycles_data:
+            data = number_cycles_data.data
+            values = [int(data.get(str(participant.id), 0)) if data.get(str(participant.id)) else 0 for participant in participants]
+        else:
+            values = [0] * len(participants)
+
+        fig = go.Figure(data=[
+            go.Bar(name='Кол-во циклов на лучшем отрезке', x=col_labels, y=values, marker_color='blue')
+        ])
+
+        fig.update_layout(
+            yaxis_title='Кол-во циклов',
+            barmode='group'
+        )
+
+        config = {
+            'displayModeBar': False,
+            'displaylogo': False,
+            'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+        }
+
+        return fig.to_html(full_html=False, config=config)
+
+    def generate_pace_table(self) -> str:
+        """
+        Генерирует HTML код для таблицы темпа в циклах на минуту на лучшем отрезке.
+        """
+        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
+        col_labels = [participant.initials for participant in participants]
+
+        # Получаем данные для количества циклов и темпа
+        number_cycles_data = NumberCycles.objects.filter(parsing_session=self.session).first()
+        pace_data = Pace.objects.filter(parsing_session=self.session).first()
+
+        if number_cycles_data and pace_data:
+            cycles = number_cycles_data.data
+            paces = pace_data.data
+
+            # Рассчитываем темп
+            values = []
+            for participant in participants:
+                participant_id = str(participant.id)
+                if participant_id in cycles and participant_id in paces:
+                    try:
+                        cycle_count = int(cycles[participant_id])
+                        pace_value = self.parse_time(paces[participant_id])
+                        if pace_value is not None:
+                            pace_in_seconds = pace_value.minute * 60 + pace_value.second + pace_value.microsecond / 1e6
+                            pace_per_minute = (cycle_count / pace_in_seconds) * 60
+                            values.append(f"{pace_per_minute:.2f}")
+                        else:
+                            values.append("-")
+                    except (ValueError, ZeroDivisionError) as e:
+                        values.append("-")
+                else:
+                    values.append("-")
+        else:
+            values = [""] * len(participants)
+
+        # Генерируем HTML таблицы
+        table_html = "<div class='table-responsive'><table id='speed-table' class='table table-bordered table-hover'><thead><tr><th></th>"
+        for col in col_labels:
+            table_html += f"<th>{col}</th>"
+        table_html += "</tr></thead><tbody class='text-center align-middle'><tr><td>Темп ц/мин на лучшем отрезке</td>"
+        for cell in values:
+            table_html += f"<td>{cell}</td>"
+        table_html += "</tr></tbody></table></div>"
+
+        return table_html
+
+    def generate_underwater_part_table(self) -> str:
+        """
+        Генерирует HTML код для таблицы подводной части.
+        """
+        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
+        row_labels = ["Подводная часть, м"]
+        col_labels = [participant.initials for participant in participants]
+
+        underwater_parts_data = UnderwaterPart.objects.filter(parsing_session=self.session)
+        underwater_parts = {}
+        for part in underwater_parts_data:
+            underwater_parts.update(part.data)
+
+        data = []
+        for participant in participants:
+            participant_id = str(participant.id)
+            if participant_id in underwater_parts:
+                value = underwater_parts[participant_id]
+                data.append(f"{value}")
+            else:
+                data.append("")
+
+        table_html = "<div class='table-responsive'> <table id='speed-table' class='table table-bordered table-hover'><thead><tr><th></th>"
+        for col in col_labels:
+            table_html += f"<th>{col}</th>"
+        table_html += "</tr></thead><tbody class='text-center align-middle'>"
+
+        table_html += f"<tr><td>{row_labels[0]}</td>"
+        for cell in data:
+            table_html += f"<td>{cell}</td>"
+        table_html += "</tr>"
+
+        table_html += "</tbody></table> </div>"
+
+        return table_html
+
+    def generate_underwater_part_chart(self) -> str:
+        """
+        Генерирует HTML код для столбчатой диаграммы подводной части.
+        """
+        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
+        col_labels = [participant.initials for participant in participants]
+
+        underwater_parts_data = UnderwaterPart.objects.filter(parsing_session=self.session)
+        underwater_parts = {}
+        for part in underwater_parts_data:
+            underwater_parts.update(part.data)
+
+        data = []
+        for participant in participants:
+            participant_id = str(participant.id)
+            if participant_id in underwater_parts:
+                value = underwater_parts[participant_id]
+                if value:
+                    try:
+                        value = float(value)
+                    except ValueError:
+                        value = 0
+                else:
+                    value = 0
+                data.append(value)
+            else:
+                data.append(0)
+
+        fig = go.Figure(data=[go.Bar(
+            x=col_labels,
+            y=data,
+            name='Подводная часть (м)',
+            marker_color='green'
+        )])
+
+        fig.update_layout(
+            xaxis_tickangle=-45,
+            yaxis_title='Подводная часть (м)',
+        )
+
+        config = {
+            'displayModeBar': False,
+            'displaylogo': False,
+            'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+        }
+
+        underwater_part_chart = fig.to_html(full_html=False, config=config)
+
+        return underwater_part_chart
+
+    def parse_time(self, time_str: str) -> time:
+        """
+        Преобразует строку времени в объект time.
+
+        :param time_str: строка времени в форматах
+        minute:second.millisecond или second.millisecond
+        :return: объект time
+        """
+        try:
+            if ':' in time_str:
+                # minute:second.millisecond
+                minute, rest = time_str.split(':')
+                second, millisecond = rest.split('.')
+            else:
+                # second.millisecond
+                minute = 0
+                second, millisecond = time_str.split('.')
+
+            minute = int(minute)
+            second = int(second)
+            millisecond = int(millisecond)
+
+            return time(minute=minute, second=second, microsecond=millisecond * 10000)
+
+        except ValueError as error:
+            print(f"Ошибка при преобразовании значения времени: {error}, {time_str}")
+            return None

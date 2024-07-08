@@ -23,8 +23,8 @@ table {
 }
 
 .table-responsive {
-    max-height: 500px;
-    overflow-y: auto;
+    /* max-height: 500px; */
+    /* overflow-y: auto; */
     display: block;
 }
 
@@ -48,15 +48,42 @@ table {
 
 /* Стили диаграмм */
 .chart-container {
-    overflow-x: auto;
+    /* overflow-x: auto; */
 }
 
 /* Стили карточек */
 .card-scrollable {
-    height: 580px;
+    /* height: 580px; */
 }
 
 .ul-scrollable {
     max-height: 580px;
     overflow-y: auto;
+}
+
+/* Скролл наверх */
+.scroll-to-top {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    display: none;
+    background-color: transparent; /* Прозрачный фон */
+    border: none;
+    cursor: pointer;
+    z-index: 1000;
+    font-size: 70px; /* Размер иконки */
+}
+
+.scroll-to-top:hover {
+    background-color: rgba(0, 0, 0, 0);
+}
+
+
+.scroll-to-top img {
+    width: 50px; /* Настроить размер изображения */
+    height: 50px; /* Настроить размер изображения */
+}
+
+.scroll-to-top:hover img {
+    opacity: 0.8; /* Изменение прозрачности при наведении */
 }
