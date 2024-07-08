@@ -1,0 +1,10 @@
+{% extends 'swim_graph/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Тепловая карта</h2>
+    <div>
+        {{ graph|safe }}
+    </div>
+</div>
+{% endblock %}

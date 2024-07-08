@@ -1,0 +1,47 @@
+{% extends 'swim_graph/base.html' %}
+
+{% block content %}
+{% if messages %}
+    <div class="messages">
+        {% for message in messages %}
+            <div {% if message.tags %} class="{{ message.tags }}" {% endif %}>{{ message }}
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+<div class="container mt-4">
+    <div class="row justify-content-center mt-2">
+        <div class="col-6 align-self-center">
+            <h3 class="mb-4 text-center">Загрузить протоколы</h2>
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                <div class="card border-primary">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item bg-light">
+                            <label class="form-label"><strong>{{ form.link_video.label }}</strong></label>
+                            {{ form.link_video }}
+                        </li>
+                        <li class="list-group-item bg-light">
+                            <label class="form-label"><strong>{{ form.start_list_file.label }}</strong></label><br />
+                            {{ form.start_list_file }}
+                        </li>
+                        <li class="list-group-item bg-light">
+                            <label class="form-label"><strong>{{ form.results_file.label }}</strong></label><br />
+                            {{ form.results_file }}
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="d-grid justify-content-md-end">
+                    <button type="submit" class="btn btn-primary mt-4">Продолжить</button>
+                </div>
+
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,62 @@
+/* styles.css */
+
+/* Всегда отображать полосу прокрутки */
+html {
+    overflow-y: scroll;
+}
+
+/* Стили таблиц */
+
+table {
+    font-family: 'Arial', sans-serif;
+    font-size: 12px;
+}
+
+.session-table {
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+}
+
+.session-table th, .table-custom td {
+    padding: 10px;
+    text-align: center;
+}
+
+.table-responsive {
+    max-height: 500px;
+    overflow-y: auto;
+    display: block;
+}
+
+.table thead th {
+    position: sticky;
+    top: 0;
+    background: #88b2dc;
+    color: white;
+    text-align: center;
+    vertical-align: top;
+}
+
+/* Стили для таблицы средней скорости */
+#speed-table th:first-child,
+#speed-table td:first-child {
+    min-width: 60px;
+    text-align: center;
+    color: white;
+    background-color: #88b2dc;
+}
+
+/* Стили диаграмм */
+.chart-container {
+    overflow-x: auto;
+}
+
+/* Стили карточек */
+.card-scrollable {
+    height: 580px;
+}
+
+.ul-scrollable {
+    max-height: 580px;
+    overflow-y: auto;
+}

@@ -1,0 +1,53 @@
+# Python
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+*.env
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# Django
+*.log
+*.pot
+*.py[cod]
+*~
+*.swp
+*.swo
+*.bak
+*.orig
+*.coverage
+.coverage.*
+.cache
+.pytest_cache
+.db.sqlite3
+db.sqlite3
+/media
+/static
+
+# MySQL
+*.sql
+
+# PostgreSQL
+*.pgsql
+*.pg_dump
+
+# Docker
+*.env
+docker-compose.override.yml
+
+# PyCharm
+.idea/
+
+# VSCode
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints
+
+# macOS
+.DS_Store
