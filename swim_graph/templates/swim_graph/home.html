@@ -2,13 +2,18 @@
 {% block title %}Главная{% endblock %}
 {% block content %}
 <div class="container mt-4">
+
     <div class="jumbotron">
-        <h3 class="display-4">Добро пожаловать в Swim Parser!</h3>
+
+        <h3 class="display-6">Приложение для анализа результатов соревнований по плаванию.</h3>
         <p class="lead">Используйте меню для загрузки протоколов или просмотра отчетов.</p>
         <hr class="my-4">
+
         <p>Выберите действие:</p>
         <a class="btn btn-primary btn-lg" href="{% url 'upload' %}" role="button">Загрузить протоколы</a>
         <a class="btn btn-secondary btn-lg" href="{% url 'sessions_list' %}" role="button">Посмотреть отчеты</a>
+    
     </div>
+
 </div>
 {% endblock %}

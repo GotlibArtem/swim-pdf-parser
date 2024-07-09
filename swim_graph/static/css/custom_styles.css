@@ -1,19 +1,102 @@
 /* styles.css */
 
-/* Всегда отображать полосу прокрутки */
-html {
+/* Панель навигации */
+.navbar {
+    background-color: #34495e;
+    color: rgba(255, 255, 255, 0.5);
+    height: 60px;
+    display: flex;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    width: 100%;
+    z-index: 1000;
+    padding: 0 20px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-brand {
+    margin-left: 20px;
+    margin-top: -22px;
+    vertical-align: middle;
+}
+
+.logo {
+    width: 80px;
+    height: 80px;
+}
+
+.snip {
+    font-family: 'Raleway', Arial, sans-serif;
+    text-align: center;
+    text-transform: uppercase;
+    font-weight: 500;
+    margin-top: 3px;
+    padding: 0;
+}
+.snip * {
+    box-sizing: border-box;
+    -webkit-transition: all 0.35s ease;
+    transition: all 0.35s ease;
+}
+.snip li {
+    display: inline-block;
+    list-style: outside none none;
+    margin: 5px 1.5em 0 1.5em;
+    overflow: hidden;
+}
+.snip a {
+    padding: 0.3em 0;
+    color: rgba(255, 255, 255, 0.5);
+    position: relative;
+    display: inline-block;
+    letter-spacing: 1px;
+    margin: 0;
+    text-decoration: none;
+}
+.snip a:before, .snip a:after {
+    position: absolute;
+    -webkit-transition: all 0.35s ease;
+    transition: all 0.35s ease;
+}
+.snip a:before {
+    top: 100%;
+    display: block;
+    height: 3px;
+    width: 100%;
+    content: "";
+    background-color: #c0392b;
+}
+.snip a:after {
+    padding: 0.3em 0;
+    color: rgba(255, 255, 255);
+    position: absolute;
+    top: 100%;
+    left: 0;
+    content: attr(data-hover);
+    white-space: nowrap;
+}
+.snip li:hover a, .snip .current a {
+    transform: translateY(-100%);
+}
+
+
+/* Общий */
+html, body {
+    margin: 0;
+    padding: 0;
     overflow-y: scroll;
+    font-family: 'Raleway', Arial, sans-serif;
 }
 
 /* Стили таблиц */
-
 table {
-    font-family: 'Arial', sans-serif;
+    font-family: 'Raleway', Arial, sans-serif;
     font-size: 12px;
 }
 
 .session-table {
-    font-family: Arial, sans-serif;
+    font-family: 'Raleway', Arial, sans-serif;
     font-size: 14px;
 }
 
@@ -31,25 +114,28 @@ table {
 .table thead th {
     position: sticky;
     top: 0;
-    background: #88b2dc;
-    color: white;
+    background-color: #34495ee0;
+    color: rgba(255, 255, 255, 0.9);
     text-align: center;
     vertical-align: top;
 }
+
 
 /* Стили для таблицы средней скорости */
 #speed-table th:first-child,
 #speed-table td:first-child {
     min-width: 60px;
     text-align: center;
-    color: white;
-    background-color: #88b2dc;
+    background-color: #34495ee0;
+    color: rgba(255, 255, 255, 0.9);
 }
+
 
 /* Стили диаграмм */
 .chart-container {
     /* overflow-x: auto; */
 }
+
 
 /* Стили карточек */
 .card-scrollable {
@@ -61,29 +147,42 @@ table {
     overflow-y: auto;
 }
 
+
 /* Скролл наверх */
 .scroll-to-top {
     position: fixed;
     bottom: 20px;
     right: 20px;
     display: none;
-    background-color: transparent; /* Прозрачный фон */
+    background-color: transparent;
     border: none;
     cursor: pointer;
     z-index: 1000;
-    font-size: 70px; /* Размер иконки */
+    font-size: 70px;
 }
 
 .scroll-to-top:hover {
     background-color: rgba(0, 0, 0, 0);
 }
 
-
 .scroll-to-top img {
-    width: 50px; /* Настроить размер изображения */
-    height: 50px; /* Настроить размер изображения */
+    width: 50px;
+    height: 50px;
 }
 
 .scroll-to-top:hover img {
-    opacity: 0.8; /* Изменение прозрачности при наведении */
+    opacity: 0.8;
+}
+
+/* Кнопка поиска */
+.search-button {
+    display: flex;
+    width: 20%;
+    height: 100%;
+    padding: 0;
+}
+
+.search-button i, .search-button img {
+    margin: 0;
+    margin-top: -7px;
 }

@@ -20,32 +20,93 @@
         <h3 class="mb-2 text-center">Сформированные отчеты</h3>
         <div class="row justify-content-center mt-2">
             <div class="col-10 align-self-center">
-                <div class="table-responsive">
-                    <table class="table table-bordered table-hover session-table">
-                        <thead>
-                            <tr>
-                                <th>Название отчета</th>
-                                <th>Ссылка на видео</th>
-                                <th>Длина заплыва</th>
-                                <th>Метраж бассейна</th>
-                                <th>Дата создания</th>
-                                <th>Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody class="text-center align-middle">
-                            {% for session in sessions %}
-                                <tr>
-                                    <td>{{ session.file_name }}</td>
-                                    <td><a href="{{ session.link_video }}" target="_blank">{{ session.link_video }}</a></td>
-                                    <td>{{ session.swim_length }}</td>
-                                    <td>{{ session.pool_length }}</td>
-                                    <td>{{ session.created }}</td>
-                                    <td><a href="{% url 'session_results' session.id %}" class="btn btn-primary btn-small">Посмотреть результаты</a></td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                <div class="card mb-6 border-secondary">
+                    <div class="card-header">
+                        <form class="form-inline">
+                            <div class="row">
+                                <div class="col-4">
+                                    <div class="form-group">
+                                        <input type="search" class="form-control" name="search" placeholder="Поиск" value={{ search_term }}>
+                                    </div>
+                                </div>
+                                <div class="col-3">
+                                    <button type="submit" class="btn btn-primary search-button">
+                                        <img src="{% static 'img/search-icon.png' %}" alt="Поиск" style="width: 20px; height: 20px;">
+                                    </button>
+                                </div>
+                                <div class="col-5"></div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-bordered" id="reports">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="align-middle" data-type="string">Название отчета</th>
+                                        <th class="align-middle" data-type="string">Ссылка на видео</th>
+                                        <th class="align-middle" data-type="string">Длина заплыва</th>
+                                        <th class="align-middle" data-type="string">Метраж бассейна</th>
+                                        <th class="align-middle" data-type="string">Дата создания</th>
+                                        <th class="align-middle">Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody  class="text-center align-middle">
+                                    {% for session in sessions %}
+                                        <tr>
+                                            <td>{{ session.file_name }}</td>
+                                            <td>
+                                                <a href="{{ session.link_video }}" target="_blank">{{ session.link_video }}</a>
+                                            </td>
+                                            <td>{{ session.swim_length }}</td>
+                                            <td>{{ session.pool_length }}</td>
+                                            <td>{{ session.created }}</td>
+                                            <td>
+                                                <a href="{% url 'session_results' session.id %}" class="btn btn-secondary btn-small" style="width: 100%; height: 70%;">Посмотреть отчет</a>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% if sessions.paginator.num_pages > 1 %}
+                            <nav>
+                                <ul class="pagination">
+                                    <li class="page-item">
+                                        {% if sessions.has_previous %}
+                                            <a class="page-link" href="?page={{ sessions.previous_page_number }}&{{ params }}" aria-label="Предыдущая">
+                                        {% else %}
+                                            <a class="page-link" aria-label="Предыдущая">
+                                        {% endif %}
+                                                <span aria-hidden="true">&laquo;</span>
+                                            </a>
+                                    </li>
+                                    
+                                    {% for num_page in sessions.paginator.page_range %}
+                                        {% if num_page == sessions.number %}
+                                            <li class="page-item active">
+                                        {% else %}
+                                            <li class="page-item">
+                                        {% endif %}
+                                                <a class="page-link" href="?page={{ num_page }}&{{ params }}">{{num_page}}</a>
+                                            </li>
+                                    {% endfor %}
+        
+                                    <li class="page-item">
+                                        {% if sessions.has_next %}
+                                            <a class="page-link" href="?page={{ sessions.next_page_number }}&{{ params }}" aria-label="Следующая">
+                                        {% else %}
+                                            <a class="page-link" aria-label="Следующая">
+                                        {% endif %}
+                                                <span aria-hidden="true">&raquo;</span>
+                                            </a>
+                                    </li>
+                                </ul>
+                            </nav>
+                        {% endif %}
+                    </div>
                 </div>
+                <br/>
             </div>
         </div>
     </div>

@@ -1,6 +1,6 @@
-from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse
-
+from django.core.paginator import Paginator
+from django.shortcuts import render, redirect, get_object_or_404
 
 from .forms import UploadFileForm, ReportSetupForm
 from .utils import (
@@ -126,8 +126,32 @@ def sessions_list_view(request):
     """
     Отображает список всех сессий парсинга.
     """
-    sessions = models.ParsingSession.objects.all().order_by('-created')
-    return render(request, 'parsing/session_list.html', {'sessions': sessions})
+    reports = models.ParsingSession.objects.all().order_by('-created')
+
+    search_term = ''
+    # Поиск по наименованию отчета, длине заплыва и метражу бассейна
+    if 'search' in request.GET:
+        search_term = request.GET['search']
+        reports = (reports.filter(file_name__icontains=search_term) |
+                   reports.filter(swim_length__icontains=search_term) |
+                   reports.filter(pool_length__icontains=search_term))
+
+    # Пагинация
+    paginator = Paginator(reports, 8)
+    page = request.GET.get('page')
+    sessions = paginator.get_page(page)
+    get_dict_copy = request.GET.copy()
+    params = get_dict_copy.pop('page', True) and get_dict_copy.urlencode()
+
+    return render(
+        request,
+        'parsing/session_list.html',
+        {
+            'sessions': sessions,
+            'params': params,
+            'search_term': search_term,
+        }
+    )
 
 
 def session_results_view(request, session_id):
