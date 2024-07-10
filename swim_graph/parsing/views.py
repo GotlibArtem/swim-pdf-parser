@@ -1,6 +1,8 @@
 from django.http import HttpResponse
 from django.core.paginator import Paginator
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from django.core.exceptions import ValidationError
 
 from .forms import UploadFileForm, ReportSetupForm
 from .utils import (
@@ -53,7 +55,8 @@ def upload_file_view(request):
             session = models.ParsingSession.objects.create(
                 file_name=parser.parse_results['file_name'],
                 link_video=link_video,
-                swim_length=parser.parse_results['swim_length']
+                swim_length=parser.parse_results['swim_length'],
+                pool_length=parser.parse_results['pool_length'],
             )
             save_parse_data(parser.parse_results, session)
 
@@ -72,7 +75,27 @@ def report_setup_view(request, session_id):
     """
 
     session = get_object_or_404(models.ParsingSession, id=session_id)
-    participants = session.protocoldata_set.order_by('final_category', 'start_position')
+    participants = session.protocoldata_set.order_by(
+        'final_category', 'start_position'
+    )
+
+    initial_data = {
+        'file_name': session.file_name,
+        'swim_length': session.swim_length,
+        'pool_length': session.pool_length,
+    }
+
+    # Подтягивание значений статусов и данных из моделей
+    for model, form_field in SETTINGS_MAPPING.items():
+        try:
+            model_instance = model.objects.get(parsing_session=session)
+            initial_data[form_field] = model_instance.status
+            if hasattr(model_instance, 'data'):
+                data_field_prefix = f"{form_field}_data_"
+                for participant in participants:
+                    initial_data[f"{data_field_prefix}{participant.id}"] = model_instance.data.get(str(participant.id), '')
+        except model.DoesNotExist:
+            initial_data[form_field] = True
 
     if request.method == 'POST':
         form = ReportSetupForm(request.POST)
@@ -98,27 +121,32 @@ def report_setup_view(request, session_id):
                         defaults={'status': status, 'data': data}
                     )
                 else:
-                    model.objects.update_or_create(
-                        parsing_session=session,
-                        defaults={'status': status}
-                    )
+                    if session.swim_length == session.pool_length:
+                        models.SpeedDrop.objects.update_or_create(
+                            parsing_session=session, defaults={'status': False}
+                        )
+                        models.BestStartFinishPercentage.objects.update_or_create(
+                            parsing_session=session, defaults={'status': False}
+                        )
+                    else:
+                        model.objects.update_or_create(
+                            parsing_session=session,
+                            defaults={'status': status}
+                        )
 
         return redirect('session_results', session_id=session_id)
     else:
-        initial_data = {
-            'file_name': session.file_name,
-            'swim_length': session.swim_length,
-            'pool_length': session.pool_length,
-        }
         form = ReportSetupForm(initial=initial_data)
-
 
     return render(
         request,
         'parsing/report_setup.html',
-        {'form': form,
-         'session': session,
-         'participants': participants}
+        {
+            'form': form,
+            'session': session,
+            'participants': participants,
+            'initial_data': initial_data,
+        }
     )
 
 

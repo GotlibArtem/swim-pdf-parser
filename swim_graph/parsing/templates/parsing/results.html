@@ -19,7 +19,7 @@
     {% csrf_token %}
     <div class="container mt-4">
         <div class="row justify-content-center">
-            <div class="col-1">
+            <div class="col-2">
                 <nav>
                     <ul class="nav nav-pills">
                         <li class="nav-item dropdown">
@@ -61,11 +61,16 @@
                     </ul>
                 </nav>
             </div>
-            <div class="col-11">
+            <div class="col-8">
                 <h3 class="mb-2 text-center"> {{ session.file_name }} </h3>
             </div>
+            <div class="col-2">
+                <div class="d-grid justify-content-md-end">
+                    <a href="{% url 'report_setup' session.id %}" class="btn btn-primary btn-small">Настройки отчета</a>
+                </div>
+            </div>
         </div>
-        <div class="row justify-content-center mt-4">
+        <div class="row justify-content-center mt-2">
             <div data-bs-spy="scroll" data-bs-target="#list-example" data-bs-smooth-scroll="true" class="scrollspy-example" tabindex="0">
                 {% if active_settings.status_start_distance %}
                     <div class="card border-secondary" id="list-item-1">

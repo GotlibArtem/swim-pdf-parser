@@ -6,7 +6,7 @@ import pdfplumber
 import plotly.graph_objects as go
 
 from swim_graph_utils.constants import (
-    ParsingKeywords, SwimLength, INTERMEDIATE_SWIM_LENGTHS
+    ParsingKeywords, PoolLength, SwimLength, INTERMEDIATE_SWIM_LENGTHS
 )
 from .models import (
     ProtocolData, ParsingSession, SwimSplitTime,
@@ -22,6 +22,7 @@ class SwimParser:
         self.parse_results = {
             'file_name': None,
             'swim_length': None,
+            'pool_length': None,
             'participants': []
         }
         self.participant_template = {
@@ -102,6 +103,7 @@ class SwimParser:
         year_of_birth = None
         final_category = None
         last_final_position = 0
+        distances = set()
 
         for line in data:
             if self.contains_keyword(line, ParsingKeywords.FINAL_KEYWORDS):
@@ -109,6 +111,7 @@ class SwimParser:
             elif any(keyword in line for keyword in INTERMEDIATE_SWIM_LENGTHS) and final_category:
                 swim_times = self.parse_split_times(line)
                 self.update_participant(initials, year_of_birth, swim_times)
+                distances.update([split['distance'] for split in swim_times.get('split_times', [])])
             elif final_category and line and len(line) > 15:
                 line = self.clean_line(line, ParsingKeywords.RANKS_KEYWORDS)
                 parts = line.split()
@@ -133,6 +136,11 @@ class SwimParser:
                 self.update_participant(initials, year_of_birth, updates)
 
                 last_final_position = final_position
+
+        if 25 in distances:
+            self.parse_results['pool_length'] = PoolLength.SHORT.value
+        else:
+            self.parse_results['pool_length'] = PoolLength.LONG.value
 
     def update_participant(self, initials: str, year_of_birth: int, updates: Dict[str, any]) -> None:
         """
@@ -572,7 +580,7 @@ class ChartGenerator:
                     speed = pool_length / total_seconds
                     speed_data[participant.initials].append(speed)
                 else:
-                    speed_data[participant.initials].append(None)
+                    speed_data[participant.initials].append('-')
 
         # Создаем таблицу падения скорости
         for dist_index, dist in enumerate(distances):
