@@ -1,18 +1,15 @@
-from django.http import HttpResponse
+"""parsing Views"""
+from typing import Any, Dict, List
+from django.http import HttpResponse, HttpResponseRedirect
 from django.core.paginator import Paginator
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.core.exceptions import ValidationError
 
+from . import models, utils
 from .forms import UploadFileForm, ReportSetupForm
-from .utils import (
-    save_parse_data, get_setting_value,
-    SwimParser, ChartGenerator
-    )
-from . import models
 
 
-# Маппинг моделей и полей формы
+# Переменные для отображения моделей и полей формы
 SETTINGS_MAPPING = {
     models.StartDistance: 'status_start_distance',
     models.AverageSpeed: 'status_average_speed',
@@ -27,9 +24,9 @@ SETTINGS_MAPPING = {
 }
 
 
-def upload_file_view(request):
+def upload_file_view(request) -> HttpResponse:
     """
-    Отображает форму для загрузки файлов и обрабатывает загруженные файлы.
+    Отображает форму для загрузки протоколв и обрабатывает загруженные файлы.
     """
     if request.method == 'POST':
         form = UploadFileForm(request.POST, request.FILES)
@@ -40,44 +37,49 @@ def upload_file_view(request):
 
             # Проверка на наличие файлов
             if not start_list_file or not results_file:
-                return HttpResponse("Файлы не загружены. Пожалуйста, загрузите оба файла.")
+                messages.error(
+                    request,
+                    'Файлы не загружены. Пожалуйста, загрузите оба файла.',
+                    extra_tags='''alert alert-danger alert-dismissible fade show'''
+                )
+                return redirect('upload')
 
             # Парсинг файлов
-            parser = SwimParser()
+            parser = utils.SwimParser()
             start_list_data = parser.parse_pdf(start_list_file)
             results_data = parser.parse_pdf(results_file)
 
             # Обработка данных
-            parser.process_start_list(start_list_data)
-            parser.process_results(results_data)
+            if not parser.process_start_list(request, start_list_data) or \
+                not parser.process_results(request, results_data):
+                return redirect('upload')
 
             # Сохранение сессии парсинга и их результатов в базу данных
             session = models.ParsingSession.objects.create(
-                file_name=parser.parse_results['file_name'],
                 link_video=link_video,
+                file_name=parser.parse_results['file_name'],
                 swim_length=parser.parse_results['swim_length'],
                 pool_length=parser.parse_results['pool_length'],
             )
-            save_parse_data(parser.parse_results, session)
+            utils.save_parse_data(parser.parse_results, session)
 
             return redirect('report_setup', session_id=session.id)
-        else:
-            print("Form is not valid:", form.errors)
-    else:
-        form = UploadFileForm()
 
-    return render(request, 'parsing/upload.html', {'form': form})
+        messages.error(request, f"Произошла ошибка: {form.errors}")
+
+    form = UploadFileForm()
+
+    context = {'form': form}
+
+    return render(request, 'parsing/upload.html', context=context)
 
 
-def report_setup_view(request, session_id):
+def report_setup_view(request, session_id: int) -> HttpResponse:
     """
-    Отображает форму для настройки таблиц/графиков отчета.
+    Отображает форму для настройки таблиц/диаграмм отчета.
     """
-
     session = get_object_or_404(models.ParsingSession, id=session_id)
-    participants = session.protocoldata_set.order_by(
-        'final_category', 'start_position'
-    )
+    participants = session.protocoldata_set.order_by('final_category', 'start_position')
 
     initial_data = {
         'file_name': session.file_name,
@@ -93,7 +95,9 @@ def report_setup_view(request, session_id):
             if hasattr(model_instance, 'data'):
                 data_field_prefix = f"{form_field}_data_"
                 for participant in participants:
-                    initial_data[f"{data_field_prefix}{participant.id}"] = model_instance.data.get(str(participant.id), '')
+                    initial_data[f"{data_field_prefix}{participant.id}"] = (
+                        model_instance.data.get(str(participant.id), '')
+                    )
         except model.DoesNotExist:
             initial_data[form_field] = True
 
@@ -122,12 +126,19 @@ def report_setup_view(request, session_id):
                     )
                 else:
                     if session.swim_length == session.pool_length:
-                        models.SpeedDrop.objects.update_or_create(
-                            parsing_session=session, defaults={'status': False}
-                        )
-                        models.BestStartFinishPercentage.objects.update_or_create(
-                            parsing_session=session, defaults={'status': False}
-                        )
+                        if form_field == 'status_speed_drop':
+                            models.SpeedDrop.objects.update_or_create(
+                                parsing_session=session, defaults={'status': False}
+                            )
+                        elif form_field == 'status_best_start_finish_percentage':
+                            models.BestStartFinishPercentage.objects.update_or_create(
+                                parsing_session=session, defaults={'status': False}
+                            )
+                        else:
+                            model.objects.update_or_create(
+                                parsing_session=session,
+                                defaults={'status': status}
+                            )
                     else:
                         model.objects.update_or_create(
                             parsing_session=session,
@@ -135,28 +146,26 @@ def report_setup_view(request, session_id):
                         )
 
         return redirect('session_results', session_id=session_id)
-    else:
-        form = ReportSetupForm(initial=initial_data)
 
-    return render(
-        request,
-        'parsing/report_setup.html',
-        {
-            'form': form,
-            'session': session,
-            'participants': participants,
-            'initial_data': initial_data,
-        }
-    )
+    form = ReportSetupForm(initial=initial_data)
+
+    context = {
+        'form': form,
+        'session': session,
+        'participants': participants,
+        'initial_data': initial_data,
+    }
+
+    return render(request, 'parsing/report_setup.html', context=context)
 
 
-def sessions_list_view(request):
+def sessions_list_view(request) -> HttpResponse:
     """
-    Отображает список всех сессий парсинга.
+    Отображает список всех сессий (отчетов) парсинга.
     """
     reports = models.ParsingSession.objects.all().order_by('-created')
-
     search_term = ''
+
     # Поиск по наименованию отчета, длине заплыва и метражу бассейна
     if 'search' in request.GET:
         search_term = request.GET['search']
@@ -165,62 +174,122 @@ def sessions_list_view(request):
                    reports.filter(pool_length__icontains=search_term))
 
     # Пагинация
-    paginator = Paginator(reports, 8)
+    paginator = Paginator(reports, 10)
     page = request.GET.get('page')
     sessions = paginator.get_page(page)
     get_dict_copy = request.GET.copy()
     params = get_dict_copy.pop('page', True) and get_dict_copy.urlencode()
 
-    return render(
-        request,
-        'parsing/session_list.html',
-        {
-            'sessions': sessions,
-            'params': params,
-            'search_term': search_term,
-        }
-    )
+    context = {
+        'sessions': sessions,
+        'params': params,
+        'search_term': search_term,
+    }
+
+    return render(request, 'parsing/reports_list.html', context=context)
 
 
-def session_results_view(request, session_id):
+def session_results_view(request, session_id: int) -> HttpResponse:
     """
-    Отображает результаты парсинга для указанной сессии.
+    Отображает отчет для указанной сессии.
     """
-    num_participants = int(get_setting_value('Number_participants'))
+    num_participants = utils.get_setting_value('Number_participants')
     session = models.ParsingSession.objects.get(id=session_id)
-    protocol_data = models.ProtocolData.objects.filter(parsing_session=session).order_by('final_position').prefetch_related('swimsplittime_set')
+    protocol_data = models.ProtocolData.objects.filter(
+        parsing_session=session
+    ).order_by('final_position').prefetch_related('swimsplittime_set')
     protocol_data = list(protocol_data[:num_participants])
 
     active_settings = {}
     for model, form_field in SETTINGS_MAPPING.items():
-        active_settings[form_field] = model.objects.filter(parsing_session=session, status=True).exists()
+        active_settings[form_field] = model.objects.filter(
+            parsing_session=session, status=True
+        ).exists()
 
-    session_charts = ChartGenerator(session, protocol_data)
+    tables, charts = generate_tables_and_charts(session, protocol_data, active_settings)
 
-    charts = {
-        'start_distance_table': session_charts.generate_start_distance_table() if active_settings.get('status_start_distance') else None,
-        'average_speed_chart': session_charts.generate_average_speed_chart() if active_settings.get('status_average_speed') else None,
-        'average_speed_table': session_charts.generate_average_speed_table() if active_settings.get('status_average_speed') else None,
-        'number_cycles_chart': session_charts.generate_number_cycles_chart() if active_settings.get('status_number_cycles') else None,
-        'pace_table': session_charts.generate_pace_table() if active_settings.get('status_pace') and active_settings.get('status_number_cycles') else None,
-        'speed_drop_table': session_charts.generate_speed_drop_table() if active_settings.get('status_speed_drop') else None,
-        'leader_gap_table': session_charts.generate_leader_gap_table() if active_settings.get('status_leader_gap') else None,
-        'underwater_part_table': session_charts.generate_underwater_part_table() if active_settings.get('status_underwater_part') else None,
-        'underwater_part_chart': session_charts.generate_underwater_part_chart() if active_settings.get('status_underwater_part') else None,
-        'start_reaction_table': session_charts.generate_best_start_reaction_table() if active_settings.get('status_best_start_reaction') else None,
-        'start_reaction_chart': session_charts.generate_best_start_reaction_chart() if active_settings.get('status_best_start_reaction') else None,
-        'start_finish_difference_table': session_charts.generate_start_finish_difference_table() if active_settings.get('status_best_start_finish_percentage') else None,
-        'start_finish_difference_chart': session_charts.generate_start_finish_difference_chart() if active_settings.get('status_best_start_finish_percentage') else None,
-        'heat_map': session_charts.generate_heat_map() if active_settings.get('status_heat_map') else None,
+    context = {
+        'session': session,
+        'protocol_data': protocol_data,
+        'active_settings': active_settings,
+        'tables': tables,
+        'charts': charts,
     }
 
-    return render(
-        request,
-        'parsing/results.html',
-        {
-            'session': session,
-            'protocol_data': protocol_data,
-            'active_settings': active_settings,
-            'charts': charts
-        }
-    )
+    return render(request, 'parsing/report.html', context=context)
+
+
+def generate_tables_and_charts(
+        session: models.ParsingSession,
+        protocol_data: List[models.ProtocolData],
+        active_settings: Dict[str, bool]
+    ) -> Dict[str, Any]:
+    """
+    Генерирует таблицы и диаграммы для сессии.
+    """
+    participants = sorted(protocol_data, key=lambda x: x.start_position)
+    session_tables = utils.TableGenerator(session, participants)
+    session_charts = utils.ChartGenerator(session, participants)
+    tables = {
+        'start_distance_table': (
+            session_tables.generate_start_distance_table()
+            if active_settings.get('status_start_distance') else None
+        ),
+        'average_speed_table': (
+            session_tables.generate_average_speed_table()
+            if active_settings.get('status_average_speed') else None
+        ),
+        'pace_table': (
+            session_tables.generate_pace_table()
+            if active_settings.get('status_pace') and active_settings.get('status_number_cycles')
+            else None
+        ),
+        'speed_drop_table': (
+            session_tables.generate_speed_drop_table()
+            if active_settings.get('status_speed_drop') else None
+        ),
+        'leader_gap_table': (
+            session_tables.generate_leader_gap_table()
+            if active_settings.get('status_leader_gap') else None
+        ),
+        'underwater_part_table': (
+            session_tables.generate_underwater_part_table()
+            if active_settings.get('status_underwater_part') else None
+        ),
+        'start_reaction_table': (
+            session_tables.generate_best_start_reaction_table()
+            if active_settings.get('status_best_start_reaction') else None
+        ),
+        'start_finish_difference_table': (
+            session_tables.generate_start_finish_difference_table()
+            if active_settings.get('status_best_start_finish_percentage') else None
+        ),
+    }
+    charts = {
+        'average_speed_chart': (
+            session_charts.generate_average_speed_chart()
+            if active_settings.get('status_average_speed') else None
+        ),
+        'number_cycles_chart': (
+            session_charts.generate_number_cycles_chart()
+            if active_settings.get('status_number_cycles') else None
+        ),
+        'underwater_part_chart': (
+            session_charts.generate_underwater_part_chart()
+            if active_settings.get('status_underwater_part') else None
+        ),
+        'start_reaction_chart': (
+            session_charts.generate_best_start_reaction_chart()
+            if active_settings.get('status_best_start_reaction') else None
+        ),
+        'start_finish_difference_chart': (
+            session_charts.generate_start_finish_difference_chart()
+            if active_settings.get('status_best_start_finish_percentage') else None
+        ),
+        'heat_map_chart': (
+            session_charts.generate_heat_map_chart()
+            if active_settings.get('status_heat_map') else None
+        ),
+    }
+
+    return tables, charts

@@ -122,8 +122,8 @@ table {
 
 
 /* Стили для таблицы средней скорости */
-#speed-table th:first-child,
-#speed-table td:first-child {
+#report-table th:first-child,
+#report-table td:first-child {
     min-width: 60px;
     text-align: center;
     background-color: #34495ee0;

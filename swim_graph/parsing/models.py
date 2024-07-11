@@ -1,13 +1,15 @@
-from django.db import models
+"""parsing Models"""
 from datetime import time
+from django.db import models
 
 from swim_graph_utils.constants import (
-    PoolLength, SwimLength, INTERMEDIATE_SWIM_LENGTHS
+    PoolLength, SwimLength
 )
 
 
 class ParsingSession(models.Model):
-    "Сессии парсинга"
+    """Сессии парсинга."""
+
     created = models.DateTimeField(
         auto_now_add=True,
         verbose_name='Дата создания сессии',
@@ -47,7 +49,8 @@ class ParsingSession(models.Model):
 
 
 class ProtocolData(models.Model):
-    "Данные об участниках заплывов из стартового и финального протоколов"
+    """Данные об участниках заплывов из стартового и финального протоколов."""
+
     parsing_session = models.ForeignKey(
         ParsingSession,
         on_delete=models.CASCADE,
@@ -114,7 +117,8 @@ class ProtocolData(models.Model):
 
 
 class SwimSplitTime(models.Model):
-    "Время по участникам на промежуточных дистанциях"
+    """Время по участникам на промежуточных дистанциях."""
+
     protocol_data = models.ForeignKey(
         ProtocolData,
         on_delete=models.CASCADE,
@@ -142,7 +146,8 @@ class SwimSplitTime(models.Model):
 
 
 class StartDistance(models.Model):
-    "Настройки для стартого отрезка"
+    """Настройки для стартого отрезка."""
+
     parsing_session = models.ForeignKey(
         ParsingSession,
         on_delete=models.CASCADE,
@@ -170,7 +175,8 @@ class StartDistance(models.Model):
 
 
 class AverageSpeed(models.Model):
-    "Настройки для средней скорости"
+    """Настройки для средней скорости."""
+
     parsing_session = models.ForeignKey(
         ParsingSession,
         on_delete=models.CASCADE,
@@ -193,7 +199,8 @@ class AverageSpeed(models.Model):
 
 
 class NumberCycles(models.Model):
-    "Настройки для кол-ва циклов на лучшем отрезке"
+    """Настройки для кол-ва циклов на лучшем отрезке."""
+
     parsing_session = models.ForeignKey(
         ParsingSession,
         on_delete=models.CASCADE,
@@ -221,7 +228,8 @@ class NumberCycles(models.Model):
 
 
 class Pace(models.Model):
-    "Настройки для темпа на лучшем отрезке"
+    """Настройки для темпа на лучшем отрезке."""
+
     parsing_session = models.ForeignKey(
         ParsingSession,
         on_delete=models.CASCADE,
@@ -249,7 +257,8 @@ class Pace(models.Model):
 
 
 class SpeedDrop(models.Model):
-    "Настройки для падения скорости"
+    """Настройки для падения скорости."""
+
     parsing_session = models.ForeignKey(
         ParsingSession,
         on_delete=models.CASCADE,
@@ -272,7 +281,8 @@ class SpeedDrop(models.Model):
 
 
 class LeaderGap(models.Model):
-    "Настройки для отставания от лидера"
+    """Настройки для отставания от лидера."""
+
     parsing_session = models.ForeignKey(
         ParsingSession,
         on_delete=models.CASCADE,
@@ -295,7 +305,8 @@ class LeaderGap(models.Model):
 
 
 class UnderwaterPart(models.Model):
-    "Настройки для подводной части"
+    """Настройки для подводной части."""
+
     parsing_session = models.ForeignKey(
         ParsingSession,
         on_delete=models.CASCADE,
@@ -323,7 +334,8 @@ class UnderwaterPart(models.Model):
 
 
 class BestStartReaction(models.Model):
-    "Настройки для лучшей стартовой реакции"
+    """Настройки для лучшей стартовой реакции."""
+
     parsing_session = models.ForeignKey(
         ParsingSession,
         on_delete=models.CASCADE,
@@ -346,7 +358,11 @@ class BestStartReaction(models.Model):
 
 
 class BestStartFinishPercentage(models.Model):
-    "Настройки для лучшего процента изменения стартового и финишного отрезков"
+    """
+    Настройки для лучшего процента изменения
+    стартового и финишного отрезков.
+    """
+
     parsing_session = models.ForeignKey(
         ParsingSession,
         on_delete=models.CASCADE,
@@ -361,15 +377,20 @@ class BestStartFinishPercentage(models.Model):
     )
 
     def __str__(self) -> str:
-        return f'Лучший процент изменения стартового и финишного отрезков (статус): {self.status}'
+        return (
+            f'Лучший процент изменения стартового и '
+            f'финишного отрезков (статус): {self.status}'
+        )
 
     class Meta:
-        verbose_name = 'настройку для лучшего процента изменения стартового и финишного отрезков'
-        verbose_name_plural = 'Настройки для лучшего процента изменения стартового и финишного отрезков'
+        verbose_name = 'настройку для лучшего процента изменения ' \
+                       'стартового и финишного отрезков'
+        verbose_name_plural = 'Настройки для лучшего процента изменения ' \
+                              'стартового и финишного отрезков'
 
 
 class HeatMap(models.Model):
-    "Настройки для тепловой карты"
+    """Настройки для тепловой карты."""
     parsing_session = models.ForeignKey(
         ParsingSession,
         on_delete=models.CASCADE,
@@ -392,15 +413,14 @@ class HeatMap(models.Model):
 
 
 class ParsingSettings(models.Model):
-    "Настройки парсинга"
+    """Настройки парсинга."""
     setting_name = models.CharField(
         max_length=256,
         null=False,
         verbose_name='Название настройки',
         db_comment='Название настройки парсинга',
     )
-    setting_value = models.CharField(
-        max_length=256,
+    setting_value = models.IntegerField(
         null=False,
         verbose_name='Значение настройки',
         db_comment='Значение настройки парсинга',

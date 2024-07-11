@@ -1,6 +1,10 @@
+"""swim_graph settings"""
 from pathlib import Path
 import os
 import environ
+
+from django.contrib.messages import constants as message_constants
+
 
 # Initialize environment variables
 env = environ.Env(
@@ -30,8 +34,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'parsing',
     'swim_graph',
+    'parsing',
 ]
 
 MIDDLEWARE = [
@@ -114,3 +118,13 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Error messages
+MESSAGE_LEVEL = message_constants.DEBUG
+MESSAGE_TAGS = {
+    message_constants.DEBUG: 'debug',
+    message_constants.INFO: 'info',
+    message_constants.SUCCESS: 'success',
+    message_constants.WARNING: 'warning',
+    message_constants.ERROR: 'danger',
+}

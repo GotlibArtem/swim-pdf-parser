@@ -18,7 +18,7 @@ services:
   web:
     build: .
     command: >
-      sh -c "python swim_graph/manage.py makemigrations && python swim_graph/manage.py migrate && python swim_graph/manage.py runserver 0.0.0.0:8000"
+      sh -c "python swim_graph/manage.py migrate && python swim_graph/manage.py runserver 0.0.0.0:8000"
     volumes:
       - .:/app
     ports:

@@ -1,8 +1,10 @@
+"""swim_graph Constants"""
 from enum import Enum
 
 
 class PoolLength(Enum):
     "Длины бассейнов"
+
     SHORT = '25m'
     LONG = '50m'
 
@@ -55,6 +57,7 @@ class ParsingKeywords():
     )
 
 
+# Промежуточные дистанции
 INTERMEDIATE_SWIM_LENGTHS = (
     '25m',
     '50m',

@@ -22,7 +22,7 @@
         <div class="row justify-content-center mt-2">
             <div class="col-6 align-self-center">
                 <h3 class="mb-4 text-center">Настройки отчета</h3>
-                <form method="post" novalidate>
+                <form id="reportForm" method="post" novalidate>
 
                     {% csrf_token %}
 
@@ -76,9 +76,14 @@
                                             <div class="mt-3" id="start-distance-fields">
                                                 {% for participant in participants %}
                                                     {% with key='status_start_distance_data_'|concat_strings:participant.id %}
-                                                        <input type="number" class="form-control mb-2" name="status_start_distance_data_{{ participant.id }}"
+                                                        <input type="number" class="form-control mb-2 required" name="status_start_distance_data_{{ participant.id }}" required
                                                         value="{{ initial_data|get_item:key }}"
                                                         placeholder="{{ participant.initials }} ({{ participant.start_position }}-я дорожка, {{ participant.final_category }})">
+                                                        {% if form.errors|get_item:key %}
+                                                            <div class="invalid-feedback">
+                                                                {{ form.errors|get_item:key }}
+                                                            </div>
+                                                        {% endif %}
                                                     {% endwith %}
                                                 {% endfor %}
                                             </div>
@@ -117,7 +122,7 @@
                                             <div class="mt-3" id="number-cycles-fields">
                                                 {% for participant in participants %}
                                                     {% with key='status_number_cycles_data_'|concat_strings:participant.id %}
-                                                        <input type="number" class="form-control mb-2" name="status_number_cycles_data_{{ participant.id }}"
+                                                        <input type="number" class="form-control mb-2 required" name="status_number_cycles_data_{{ participant.id }}" required
                                                         value="{{ initial_data|get_item:key }}"
                                                         placeholder="{{ participant.initials }} ({{ participant.start_position }}-я дорожка, {{ participant.final_category }})">
                                                     {% endwith %}
@@ -142,7 +147,7 @@
                                             <div class="mt-3" id="pace-fields">
                                                 {% for participant in participants %}
                                                     {% with key='status_pace_data_'|concat_strings:participant.id %}
-                                                        <input type="text" id="timeInput_{{ participant.id }}" class="form-control mb-2" name="status_pace_data_{{ participant.id }}"
+                                                        <input type="text" id="timeInput_{{ participant.id }}" class="form-control mb-2 required" name="status_pace_data_{{ participant.id }}" required
                                                         value="{{ initial_data|get_item:key }}"
                                                         placeholder="{{ participant.initials }} ({{ participant.start_position }}-я дорожка, {{ participant.final_category }})"
                                                         data-bs-toggle="tooltip" title="Укажите темп на лучшем отрезке в формате секунда.миллисекунда или секунда,миллисекунда (например, 1.36 или 2,09)">
@@ -200,7 +205,7 @@
                                             <div class="mt-3" id="underwater-part-fields">
                                                 {% for participant in participants %}
                                                     {% with key='status_underwater_part_data_'|concat_strings:participant.id %}
-                                                        <input type="number" class="form-control mb-2" name="status_underwater_part_data_{{ participant.id }}"
+                                                        <input type="number" class="form-control mb-2 required" name="status_underwater_part_data_{{ participant.id }}" required
                                                         value="{{ initial_data|get_item:key }}"
                                                         placeholder="{{ participant.initials }} ({{ participant.start_position }}-я дорожка, {{ participant.final_category }})">
                                                     {% endwith %}
@@ -272,7 +277,33 @@
 
     {% block extra_js %}
         <script src="{% static 'js/toggle_fields.js' %}"></script>
+        <script src="{% static 'js/check_field.js' %}"></script>
         <script src="{% static 'js/validation.js' %}"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const form = document.querySelector('form');
+                const requiredFields = document.querySelectorAll('input[required]');
+
+                form.addEventListener('submit', function(event) {
+                    let isValid = true;
+
+                    requiredFields.forEach(function(field) {
+                        if (!field.disabled && !field.value.trim()) {
+                            field.classList.add('is-invalid');
+                            isValid = false;
+                        } else {
+                            field.classList.remove('is-invalid');
+                        }
+                    });
+
+                    if (!isValid) {
+                        event.preventDefault();
+                        // Включить alert только если хотите вывести общее сообщение.
+                        alert('Заполните все пустые поля или отключите их из отчета!');
+                    }
+                });
+            });
+        </script>
     {% endblock %}
 
 {% endblock %}

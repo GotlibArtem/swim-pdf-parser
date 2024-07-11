@@ -28,6 +28,7 @@ env/
 db.sqlite3
 /media
 /static
+/logs
 
 # MySQL
 *.sql

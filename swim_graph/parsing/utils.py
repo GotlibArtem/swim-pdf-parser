@@ -1,12 +1,15 @@
-from datetime import datetime, timedelta, time
-from typing import List, Dict
+"""Parsing Utilities"""
+from datetime import time
 import re
-import pandas as pd
+from typing import Any, Dict, List, Optional
 import pdfplumber
 import plotly.graph_objects as go
+from django.contrib import messages
+from django.http import HttpRequest
 
 from swim_graph_utils.constants import (
-    ParsingKeywords, PoolLength, SwimLength, INTERMEDIATE_SWIM_LENGTHS
+    ParsingKeywords, PoolLength, SwimLength,
+    INTERMEDIATE_SWIM_LENGTHS
 )
 from .models import (
     ProtocolData, ParsingSession, SwimSplitTime,
@@ -16,7 +19,7 @@ from .models import (
 
 
 class SwimParser:
-    "Класс для парсинга стартового и финального протоколов"
+    """Класс для парсинга стартового и финального протоколов."""
 
     def __init__(self):
         self.parse_results = {
@@ -37,10 +40,9 @@ class SwimParser:
             'split_times': []
         }
 
-    def parse_pdf(self, file) -> List[str]:
+    def parse_pdf(self, file: Any) -> List[str]:
         """
-        Парсит указанный PDF файл и
-        возвращает извлеченные данные в виде списка строк.
+        Парсит указанный PDF файл и возвращает извлеченные данные в виде списка строк.
 
         :param file: Загруженный PDF файл.
         :return: Список извлеченных строк.
@@ -53,14 +55,21 @@ class SwimParser:
                     lines.extend(text.split("\n"))
         return lines
 
-    def process_start_list(self, data: List[str]) -> None:
+    def process_start_list(self, request: HttpRequest, data: List[str]) -> bool:
         """
-        Обрабатывает данные стартового протокола и
-        сохраняет их в переменную parse_results.
+        Обрабатывает данные стартового протокола и сохраняет их в переменную parse_results.
 
         :param data: Список строк, извлеченных из PDF файла.
         """
         final_category = None
+
+        if not any(keyword in ' '.join(data) for keyword in ['Стартовый протокол', 'Startlist']):
+            messages.error(
+                request,
+                'Убедитесь, что загрузили стартовый протокол!',
+                extra_tags='warning'
+            )
+            return False
 
         for line in data:
             if self.contains_keyword(line, ParsingKeywords.FILE_NAME_KEYWORDS):
@@ -92,13 +101,22 @@ class SwimParser:
                 self.participant_template['split_times'] = []
                 self.parse_results['participants'].append(self.participant_template.copy())
 
-    def process_results(self, data: List[str]) -> None:
+        return True
+
+    def process_results(self, request: HttpRequest, data: List[str]) -> bool:
         """
-        Обрабатывает данные финального протокола и
-        сохраняет их в переменную parse_results.
+        Обрабатывает данные финального протокола и сохраняет их в переменную parse_results.
 
         :param data: Список строк, извлеченных из PDF файла.
         """
+        if not any(keyword in ' '.join(data) for keyword in ['Результаты', 'Results']):
+            messages.error(
+                request,
+                'Убедитесь, что загрузили финальный протокол!',
+                extra_tags='warning'
+            )
+            return False
+
         initials = None
         year_of_birth = None
         final_category = None
@@ -130,22 +148,26 @@ class SwimParser:
                 updates = {
                     'final_position': final_position,
                     'reaction_time': self.convert_time_reaction(parts[-3]),
-                    'result': self.parse_time(parts[-2]),
+                    'result': parse_time(parts[-2]),
                     'points': self.convert_to_int(parts[-1]),
                 }
                 self.update_participant(initials, year_of_birth, updates)
 
                 last_final_position = final_position
 
-        if 25 in distances:
-            self.parse_results['pool_length'] = PoolLength.SHORT.value
-        else:
-            self.parse_results['pool_length'] = PoolLength.LONG.value
+        self.parse_results['pool_length'] = (
+            PoolLength.SHORT.value if 25 in distances
+            else PoolLength.LONG.value
+        )
+        return True
 
-    def update_participant(self, initials: str, year_of_birth: int, updates: Dict[str, any]) -> None:
+    def update_participant(
+            self, initials: str,
+            year_of_birth: int,
+            updates: Dict[str, any]
+        ) -> None:
         """
-        Находит участника по значениям initials и year_of_birth и
-        обновляет указанные ключи.
+        Находит участника по значениям initials и year_of_birth и обновляет указанные ключи.
 
         :param initials: Инициалы участника.
         :param year_of_birth: Год рождения участника.
@@ -165,8 +187,7 @@ class SwimParser:
                         participant[key] = value
                 break
 
-    def parse_split_times(self,
-                          input_str: str) -> Dict[str, List[Dict[str, any]]]:
+    def parse_split_times(self, input_str: str) -> Dict[str, List[Dict[str, any]]]:
         """
         Парсит строку с результатами заплывов и возвращает словарь с данными.
         Извлекает только второе значение времени для каждого ключа
@@ -179,11 +200,8 @@ class SwimParser:
             split_times = []
             pattern = re.compile(r'(' + '|'.join(INTERMEDIATE_SWIM_LENGTHS) + r')')
 
-            # Найти все совпадения для паттерна
             matches = pattern.finditer(input_str)
             positions = [match.start() for match in matches]
-
-            # Добавить конец строки как позицию для последнего сегмента
             positions.append(len(input_str))
 
             for i in range(len(positions) - 1):
@@ -193,13 +211,15 @@ class SwimParser:
                 time_values = time_segment.strip().split()
                 if len(time_values) > 1:
                     key = distance.strip().replace('m', '')
-                    split_times.append({'distance': int(key), 'split_time': self.parse_time(time_values[1].strip())})
-
+                    split_times.append(
+                        {'distance': int(key),
+                         'split_time': parse_time(time_values[1].strip())}
+                    )
             split_times = sorted(split_times, key=lambda x: x['distance'])
 
             return {'split_times': split_times}
+
         except (ValueError, TypeError) as error:
-            print(f"Ошибка при парсинге времени заплыва: {error}")
             return {'split_times': []}
 
     def get_file_name(self, line: str) -> str:
@@ -212,7 +232,6 @@ class SwimParser:
         line = ' '.join(line.split()[2:])
         line = re.sub(r'\(.*?\)', '', line)
         line_parts = line.split()
-
         if len(line_parts) > 1:
             line_parts.pop()
 
@@ -234,9 +253,10 @@ class SwimParser:
             for length in SwimLength:
                 if length.value == distance:
                     return length.value
+
         return None
 
-    def contains_keyword(self, line: str, keywords: list) -> bool:
+    def contains_keyword(self, line: str, keywords: List[str]) -> bool:
         """
         Проверяет, содержит ли строка одно из ключевых слов.
 
@@ -247,7 +267,7 @@ class SwimParser:
         """
         return any(re.search(r'\b' + re.escape(keyword) + r'\b', line) for keyword in keywords)
 
-    def clean_line(self, line: str, substrings_to_remove: list) -> str:
+    def clean_line(self, line: str, substrings_to_remove: List[str]) -> str:
         """
         Удаляет из строки определенные подстроки.
 
@@ -269,7 +289,6 @@ class SwimParser:
         try:
             return int(value)
         except (ValueError, TypeError) as error:
-            print(f"Ошибка при преобразовании строки в число: {error}")
             return None
 
     def convert_time_reaction(self, time_reaction: str) -> time:
@@ -282,254 +301,42 @@ class SwimParser:
         try:
             time_reaction = time_reaction.replace(',', '.')
             time_reaction = time_reaction.replace('+', '')
-            return self.parse_time(time_reaction)
+            return parse_time(time_reaction)
         except (ValueError, TypeError) as error:
-            print(f"Ошибка при преобразовании времени реакции: {error}")
             return None
-
-    def parse_time(self, time_str: str) -> time:
-        """
-        Преобразует строку времени в объект time.
-
-        :param time_str: строка времени в форматах
-        minute:second.millisecond или second.millisecond
-        :return: объект time
-        """
-        try:
-            if ':' in time_str:
-                # minute:second.millisecond
-                minute, rest = time_str.split(':')
-                second, millisecond = rest.split('.')
-            else:
-                # second.millisecond
-                minute = 0
-                second, millisecond = time_str.split('.')
-
-            minute = int(minute)
-            second = int(second)
-            millisecond = int(millisecond)
-
-            return time(minute=minute, second=second, microsecond=millisecond * 10000)
-
-        except ValueError as error:
-            print(f"Ошибка при преобразовании значения времени: {error}, {time_str}")
-            return None
-
-
-def save_raw_data(data: List[str], output_path: str) -> None:
-    """
-    Сохраняет сырые данные в текстовый файл.
-
-    :param data: Список строк для сохранения.
-    :param output_path: Путь к выходному текстовому файлу.
-    """
-    with open(output_path, 'w', encoding='utf-8') as f:
-        for line in data:
-            f.write(line + '\n')
-
-
-def save_parse_data(protocol_data: Dict, session: ParsingSession) -> None:
-    """
-    Сохраняет спарсенные данные по протоколам в ProtocolData и SwimSplitTime.
-
-    :param protocol_data: Спарсенные данные из протоколов.
-    :param session: Сессия парсинга.
-    """
-    protocol_fields = [field.name for field in ProtocolData._meta.get_fields()]
-
-    # Сортировка участников по полю final_position
-    sorted_participants = sorted(
-        protocol_data['participants'],
-        key=lambda x: x['final_position'] if x['final_position'] is not None else float('inf')
-    )
-    # Кол-во участников для сохранения
-    max_number_participants = int(get_setting_value('Number_participants'))
-
-    for participant_data in sorted_participants:
-        if (participant_data['result'] and
-                participant_data['final_position'] is not None and
-                participant_data['final_position'] <= max_number_participants):
-            participant_data['parsing_session'] = session
-            filtered_data = {key: value for key, value in participant_data.items() if key in protocol_fields}
-
-            protocol_entry = ProtocolData.objects.create(**filtered_data)
-
-            split_times_data = participant_data.get('split_times', [])
-
-            split_times = [
-                SwimSplitTime(protocol_data=protocol_entry, **split_time)
-                for split_time in split_times_data
-            ]
-
-            SwimSplitTime.objects.bulk_create(split_times)
-
-
-def get_setting_value(setting_name: str) -> str:
-    """
-    Возвращает значение настройки по её имени.
-
-    :param setting_name: Название настройки.
-    :return: Значение настройки или None, если настройка не найдена.
-    """
-    try:
-        setting = ParsingSettings.objects.get(setting_name=setting_name)
-        return setting.setting_value
-    except ParsingSettings.DoesNotExist:
-        return None
 
 
 class ChartGenerator:
-    def __init__(self, session, protocol_data):
+    """Класс для генерации диаграмм."""
+
+    def __init__(self, session: ParsingSession, participants: List[ProtocolData]) -> None:
         self.session = session
-        self.protocol_data = protocol_data
-
-    def generate_heat_map(self):
-        """
-        Создает и возвращает тепловую карту для протокола данных.
-
-        :return:
-            str: HTML-код для отображения тепловой карты.
-        """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-
-        data = []
-        row_labels = []
-        col_labels = set()
-
-        # Получить все уникальные промежуточные дистанции или использовать swim_length и result
-        for participant in participants:
-            split_times = participant.swimsplittime_set.all()
-            if not split_times:
-                col_labels.add(int(self.session.swim_length.replace('m', '')))
-                break
-            for split in split_times:
-                distance = split.distance
-                col_labels.add(distance)
-
-        col_labels = sorted(col_labels)
-
-        # Создать строки данных для каждого пловца
-        for participant in participants:
-            row_labels.append(participant.initials)
-            split_times = participant.swimsplittime_set.all()
-            if not split_times:
-                total_seconds = participant.result.minute * 60 + participant.result.second + participant.result.microsecond / 1e6
-                row = {int(self.session.swim_length.replace('m', '')): total_seconds}
-            else:
-                row = {split.distance: split.split_time.minute * 60 + split.split_time.second + split.split_time.microsecond / 1e6 for split in split_times}
-
-            # Заполнить отсутствующие значения None
-            row_data = [row.get(dist, None) for dist in col_labels]
-            data.append(row_data)
-
-        # Развернуть данные для корректного отображения
-        data = list(map(list, zip(*data)))
-
-        # Создание меток промежутков
-        col_labels_with_ranges = []
-        previous_dist = 0
-        for dist in col_labels:
-            col_labels_with_ranges.append(f"{previous_dist}-{dist}м")
-            previous_dist = dist
-
-        # Создание тепловой карты
-        fig = go.Figure(data=go.Heatmap(
-            z=data,
-            x=row_labels,  # Участники по оси x
-            y=col_labels_with_ranges,  # Промежуточные дистанции по оси y
-            colorscale='YlGnBu',
-            text=[[f"{val:.2f}" if val is not None else "" for val in row] for row in data],
-            hoverinfo="text"
-        ))
-
-        fig.update_layout(
-            xaxis_nticks=36,
-            yaxis=dict(title='Дистанция (м)'),
-        )
-
-        config = {
-            'displayModeBar': False,
-            'displaylogo': False,
-            'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
-        }
-
-        heat_map = fig.to_html(full_html=False, config=config)
-
-        return heat_map
-
-    def generate_average_speed_table(self) -> str:
-        """
-        Генерирует HTML код для таблицы средней скорости.
-        """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-        distances = sorted({split.distance for participant in participants for split in participant.swimsplittime_set.all()})
-
-        data = []
-        pool_length = int(self.session.pool_length.replace('m', ''))
-        row_labels = [f"{dist - pool_length if i > 0 else 0}-{dist}м, м/сек" for i, dist in enumerate(distances)] or [f"0-{self.session.swim_length.replace('m', '')}м, м/сек"]
-        col_labels = [participant.initials for participant in participants]
-
-        # Собираем данные для каждой дистанции или используем swim_length и result
-        for dist in distances or [int(self.session.swim_length.replace('m', ''))]:
-            row = []
-            for participant in participants:
-                split_time = participant.swimsplittime_set.filter(distance=dist).first()
-                if split_time:
-                    total_seconds = split_time.split_time.minute * 60 + split_time.split_time.second + split_time.split_time.microsecond / 1e6
-                    speed = pool_length / total_seconds  # Используем дистанцию вместо pool_length
-                elif not split_time and participant.result:
-                    total_seconds = participant.result.minute * 60 + participant.result.second + participant.result.microsecond / 1e6
-                    speed = pool_length / total_seconds
-                else:
-                    speed = None
-                row.append(f"{speed:.3f}" if speed is not None else "")
-            data.append(row)
-
-        # Генерируем HTML таблицы
-        table_html = "<div class='table-responsive'> <table id='speed-table' class='table table-bordered table-hover'><thead><tr><th></th>"
-        for col in col_labels:
-            table_html += f"<th>{col}</th>"
-        table_html += "</tr></thead><tbody class='text-center align-middle'>"
-
-        for i, row in enumerate(data):
-            table_html += f"<tr><td>{row_labels[i]}</td>"
-            for cell in row:
-                table_html += f"<td>{cell}</td>"
-            table_html += "</tr>"
-
-        table_html += "</tbody></table> </div>"
-
-        return table_html
+        self.participants = participants
 
     def generate_average_speed_chart(self) -> str:
         """
         Генерирует HTML код для столбчатой диаграммы средней скорости.
         """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-        distances = sorted({split.distance for participant in participants for split in participant.swimsplittime_set.all()}) or [int(self.session.swim_length.replace('m', ''))]
+        distances = sorted({
+            split.distance
+            for participant in self.participants
+            for split in participant.swimsplittime_set.all()
+        }) or [int(self.session.swim_length.replace('m', ''))]
 
-        pool_length = int(self.session.pool_length.replace('m', ''))
-        col_labels = [participant.initials for participant in participants]
-
+        col_labels = [participant.initials for participant in self.participants]
         speed_data = {dist: [] for dist in distances}
-        
-        for participant in participants:
+
+        for participant in self.participants:
             for dist in distances:
-                split_time = participant.swimsplittime_set.filter(distance=dist).first()
-                if split_time:
-                    total_seconds = split_time.split_time.minute * 60 + split_time.split_time.second + split_time.split_time.microsecond / 1e6
-                    speed = pool_length / total_seconds  # Используем дистанцию вместо pool_length
-                elif not split_time and participant.result:
-                    total_seconds = participant.result.minute * 60 + participant.result.second + participant.result.microsecond / 1e6
-                    speed = pool_length / total_seconds
-                else:
-                    speed = None
+                speed = self._calculate_speed(participant, dist)
                 speed_data[dist].append(speed)
-        
+
         fig = go.Figure()
 
         bar_width = 0.2
-        colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'black', 'orange', 'purple', 'pink', 'brown', 'grey', 'lime', 'olive', 'navy', 'teal']
+        colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'black',
+                  'orange', 'purple', 'pink', 'brown', 'grey', 'lime', 'olive',
+                  'navy', 'teal']
         for i, dist in enumerate(distances):
             speeds = speed_data[dist]
             fig.add_trace(go.Bar(
@@ -547,170 +354,89 @@ class ChartGenerator:
             legend_title='Дистанции',
         )
 
-        config = {
-            'displayModeBar': False,
-            'displaylogo': False,
-            'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
-        }
+        average_speed_chart = fig.to_html(
+            full_html=False,
+            config={
+                'displayModeBar': False,
+                'displaylogo': False,
+                'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+            }
+        )
 
-        speed_chart = fig.to_html(full_html=False, config=config)
+        return average_speed_chart
 
-        return speed_chart
-
-    def generate_speed_drop_table(self) -> str:
+    def generate_number_cycles_chart(self) -> str:
         """
-        Генерирует HTML код для таблицы падения скорости.
+        Генерирует HTML код для столбчатой диаграммы количества циклов на лучшем отрезке.
         """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-        distances = sorted({split.distance for participant in participants for split in participant.swimsplittime_set.all()})
+        col_labels = [participant.initials for participant in self.participants]
 
-        data = []
-        pool_length = int(self.session.pool_length.replace('m', ''))
-        row_labels = [f"{dist - pool_length if i > 0 else 0}-{dist}м, %" for i, dist in enumerate(distances)]
-        col_labels = [participant.initials for participant in participants]
+        number_cycles_data = NumberCycles.objects.filter(parsing_session=self.session).first()
+        values = self._get_number_cycles_data(self.participants, number_cycles_data)
 
-        # Создаем словарь для хранения скоростей по каждой дистанции для каждого участника
-        speed_data = {participant.initials: [] for participant in participants}
+        fig = go.Figure(data=[go.Bar(
+            name='Кол-во циклов на лучшем отрезке',
+            x=col_labels,
+            y=values,
+            marker_color='blue'
+        )])
 
-        for participant in participants:
-            for dist in distances:
-                split_time = participant.swimsplittime_set.filter(distance=dist).first()
-                if split_time:
-                    total_seconds = split_time.split_time.minute * 60 + split_time.split_time.second + split_time.split_time.microsecond / 1e6
-                    speed = pool_length / total_seconds
-                    speed_data[participant.initials].append(speed)
-                else:
-                    speed_data[participant.initials].append('-')
+        fig.update_layout(
+            yaxis_title='Кол-во циклов',
+            barmode='group'
+        )
 
-        # Создаем таблицу падения скорости
-        for dist_index, dist in enumerate(distances):
-            row = []
-            for participant in participants:
-                initial_speed = speed_data[participant.initials][0]
-                current_speed = speed_data[participant.initials][dist_index]
-                if initial_speed and current_speed:
-                    speed_drop = (current_speed / initial_speed) * 100
-                elif dist_index == 0:
-                    speed_drop = 100.0  # Первая дистанция всегда 100%
-                else:
-                    speed_drop = None
-                row.append(speed_drop)
-            data.append(row)
+        number_cycles_chart = fig.to_html(
+            full_html=False,
+            config={
+                'displayModeBar': False,
+                'displaylogo': False,
+                'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+            }
+        )
 
-        table_html = "<div class='table-responsive'><table id='speed-table' class='table table-bordered table-hover'><thead><tr><th></th>"
-        for col in col_labels:
-            table_html += f"<th>{col}</th>"
-        table_html += "</tr></thead><tbody class='text-center align-middle'>"
+        return number_cycles_chart
 
-        for i, row in enumerate(data):
-            table_html += f"<tr><td>{row_labels[i]}</td>"
-            for cell in row:
-                table_html += f"<td>{cell:.2f}</td>" if cell is not None else "<td></td>"
-            table_html += "</tr>"
-
-        table_html += "</tbody></table></div>"
-
-        return table_html
-
-    def generate_leader_gap_table(self) -> str:
+    def generate_underwater_part_chart(self) -> str:
         """
-        Генерирует HTML код для таблицы отставания от лидера.
+        Генерирует HTML код для столбчатой диаграммы подводной части.
         """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-        leader = next((p for p in participants if p.final_position == 1), None)
+        col_labels = [participant.initials for participant in self.participants]
 
-        if not leader:
-            raise ValueError("Лидер не найден")
+        underwater_parts_data = UnderwaterPart.objects.filter(parsing_session=self.session)
+        data = self._get_underwater_parts_data(self.participants, underwater_parts_data)
 
-        distances = sorted({split.distance for participant in participants for split in participant.swimsplittime_set.all()}) or [int(self.session.swim_length.replace('m', ''))]
-        
-        # Получаем времена лидера для всех дистанций
-        leader_times = {split.distance: split.split_time.minute * 60 + split.split_time.second + split.split_time.microsecond / 1e6 for split in leader.swimsplittime_set.all()}
-        if not leader_times:
-            leader_times = {int(self.session.swim_length.replace('m', '')): leader.result.minute * 60 + leader.result.second + leader.result.microsecond / 1e6}
-        
-        data = []
-        pool_length = int(self.session.pool_length.replace('m', ''))
-        row_labels = [f"{dist - pool_length if i > 0 else 0}-{dist}м" for i, dist in enumerate(distances)] or [f"0-{self.session.swim_length}м"]
-        col_labels = [participant.initials for participant in participants]
+        fig = go.Figure(data=[go.Bar(
+            x=col_labels,
+            y=data,
+            name='Подводная часть (м)',
+            marker_color='green'
+        )])
 
-        for dist in distances:
-            row = []
-            leader_time = leader_times.get(dist, 0)
-            for participant in participants:
-                if participant.final_position == 1:
-                    row.append(0.0)  # Для лидера всегда 0
-                else:
-                    split_time = participant.swimsplittime_set.filter(distance=dist).first()
-                    if split_time:
-                        total_seconds = split_time.split_time.minute * 60 + split_time.split_time.second + split_time.split_time.microsecond / 1e6
-                        gap = total_seconds - leader_time
-                    elif not split_time and participant.result:
-                        total_seconds = participant.result.minute * 60 + participant.result.second + participant.result.microsecond / 1e6
-                        gap = total_seconds - leader_time
-                    else:
-                        gap = None
-                    row.append(gap)
-            data.append(row)
+        fig.update_layout(
+            xaxis_tickangle=-45,
+            yaxis_title='Подводная часть (м)',
+        )
 
-        table_html = "<div class='table-responsive'><table id='speed-table' class='table table-bordered table-hover'><thead><tr><th></th>"
-        for col in col_labels:
-            table_html += f"<th>{col}</th>"
-        table_html += "</tr></thead><tbody class='text-center align-middle'>"
+        underwater_part_chart = fig.to_html(
+            full_html=False,
+            config={
+                'displayModeBar': False,
+                'displaylogo': False,
+                'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+            }
+        )
 
-        for i, row in enumerate(data):
-            table_html += f"<tr><td>{row_labels[i]}</td>"
-            for cell in row:
-                table_html += f"<td>{cell:.2f}</td>" if cell is not None else "<td></td>"
-            table_html += "</tr>"
-
-        table_html += "</tbody></table></div>"
-
-        return table_html
-
-    def generate_best_start_reaction_table(self) -> str:
-        """
-        Генерирует HTML код для таблицы лучшей стартовой реакции.
-        """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-
-        data = []
-        col_labels = [participant.initials for participant in participants]
-
-        # Собираем данные для лучшей стартовой реакции
-        for participant in participants:
-            if participant.reaction_time:
-                total_seconds = participant.reaction_time.minute * 60 + participant.reaction_time.second + participant.reaction_time.microsecond / 1e6
-            else:
-                total_seconds = None
-            data.append(total_seconds)
-
-        # Создаем метку строки
-        row_labels = ['Лучшая стартовая реакция, сек']
-
-        # Генерируем HTML таблицы
-        table_html = "<div class='table-responsive'> <table id='speed-table' class='table table-bordered table-hover'><thead><tr><th></th>"
-        for col in col_labels:
-            table_html += f"<th>{col}</th>"
-        table_html += "</tr></thead><tbody class='text-center align-middle'>"
-
-        table_html += f"<tr><td>{row_labels[0]}</td>"
-        for cell in data:
-            table_html += f"<td>{cell:.2f}</td>" if cell is not None else "<td>-</td>"
-        table_html += "</tr>"
-
-        table_html += "</tbody></table> </div>"
-
-        return table_html
+        return underwater_part_chart
 
     def generate_best_start_reaction_chart(self) -> str:
         """
         Генерирует HTML код для столбчатой диаграммы лучшей стартовой реакции.
         """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-
-        col_labels = [participant.initials for participant in participants]
-        reaction_times = [participant.reaction_time.minute * 60 + participant.reaction_time.second + participant.reaction_time.microsecond / 1e6 if participant.reaction_time else 0 for participant in participants]
+        col_labels = [participant.initials for participant in self.participants]
+        reaction_times = [self._get_total_seconds(participant.reaction_time)
+                          if participant.reaction_time else 0
+                          for participant in self.participants]
 
         fig = go.Figure(data=[go.Bar(
             x=col_labels,
@@ -724,73 +450,24 @@ class ChartGenerator:
             yaxis_title='Стартовая реакция (сек)',
         )
 
-        config = {
-            'displayModeBar': False,
-            'displaylogo': False,
-            'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
-        }
+        best_start_reaction_chart = fig.to_html(
+            full_html=False,
+            config={
+                'displayModeBar': False,
+                'displaylogo': False,
+                'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+            }
+        )
 
-        start_reaction_chart = fig.to_html(full_html=False, config=config)
-
-        return start_reaction_chart
-
-    def generate_start_finish_difference_table(self) -> str:
-        """
-        Генерирует HTML код для таблицы лучшего процента изменения стартового и финишного отрезков.
-        """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-
-        row_labels = ["% изменения стартового и финишного отрезков, с"]
-        col_labels = [participant.initials for participant in participants]
-
-        data = []
-        for participant in participants:
-            split_times = sorted(participant.swimsplittime_set.all(), key=lambda x: x.distance)
-            if split_times:
-                start_time = split_times[0].split_time
-                end_time = split_times[-1].split_time
-                start_seconds = start_time.minute * 60 + start_time.second + start_time.microsecond / 1e6
-                end_seconds = end_time.minute * 60 + end_time.second + end_time.microsecond / 1e6
-                time_difference = end_seconds - start_seconds
-                data.append(f"{time_difference:.2f}")
-            else:
-                data.append("")
-
-        # Генерируем HTML таблицы
-        table_html = "<div class='table-responsive'> <table id='speed-table' class='table table-bordered table-hover'><thead><tr><th></th>"
-        for col in col_labels:
-            table_html += f"<th>{col}</th>"
-        table_html += "</tr></thead><tbody class='text-center align-middle'>"
-
-        table_html += f"<tr><td>{row_labels[0]}</td>"
-        for cell in data:
-            table_html += f"<td>{cell}</td>"
-        table_html += "</tr>"
-
-        table_html += "</tbody></table> </div>"
-
-        return table_html
+        return best_start_reaction_chart
 
     def generate_start_finish_difference_chart(self) -> str:
         """
-        Генерирует HTML код для столбчатой диаграммы лучшего процента изменения стартового и финишного отрезков.
+        Генерирует HTML код для столбчатой диаграммы
+        лучшего процента изменения стартового и финишного отрезков.
         """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-
-        col_labels = [participant.initials for participant in participants]
-        data = []
-
-        for participant in participants:
-            split_times = sorted(participant.swimsplittime_set.all(), key=lambda x: x.distance)
-            if split_times:
-                start_time = split_times[0].split_time
-                end_time = split_times[-1].split_time
-                start_seconds = start_time.minute * 60 + start_time.second + start_time.microsecond / 1e6
-                end_seconds = end_time.minute * 60 + end_time.second + end_time.microsecond / 1e6
-                time_difference = end_seconds - start_seconds
-                data.append(time_difference)
-            else:
-                data.append(0)
+        col_labels = [participant.initials for participant in self.participants]
+        data = self._get_start_finish_difference_data(self.participants)
 
         fig = go.Figure(data=[go.Bar(
             x=col_labels,
@@ -800,175 +477,169 @@ class ChartGenerator:
         )])
 
         fig.update_layout(
-            yaxis=dict(title='Процент изменения (%)'),
+            yaxis={"title": 'Процент изменения (%)'},
         )
 
-        config = {
-            'displayModeBar': False,
-            'displaylogo': False,
-            'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
-        }
-
-        start_finish_difference_chart = fig.to_html(full_html=False, config=config)
+        start_finish_difference_chart = fig.to_html(
+            full_html=False,
+            config={
+                'displayModeBar': False,
+                'displaylogo': False,
+                'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+            }
+        )
 
         return start_finish_difference_chart
 
-    def generate_start_distance_table(self) -> str:
+    def generate_heat_map_chart(self) -> str:
         """
-        Генерирует HTML код для таблицы стартового отрезка 0-15.
+        Создает и возвращает тепловую карту для протокола данных.
+
+        :return: HTML-код для отображения тепловой карты.
         """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
         data = []
+        row_labels = []
+        col_labels = set()
 
-        col_labels = [participant.initials for participant in participants]
-        row_labels = ['Стартовый отрезок 0-15, сек']
+        for participant in self.participants:
+            split_times = participant.swimsplittime_set.all()
+            if not split_times:
+                col_labels.add(int(self.session.swim_length.replace('m', '')))
+                break
+            for split in split_times:
+                distance = split.distance
+                col_labels.add(distance)
 
-        # Получаем данные для стартового отрезка
-        start_distance_data = StartDistance.objects.filter(parsing_session=self.session).first()
-        if start_distance_data:
-            start_distance_values = start_distance_data.data
-            row = [start_distance_values.get(str(participant.id), '') for participant in participants]
-            data.append(row)
-        
-        # Генерируем HTML таблицы
-        table_html = "<div class='table-responsive'> <table id='speed-table' class='table table-bordered table-hover'><thead><tr><th></th>"
-        for col in col_labels:
-            table_html += f"<th>{col}</th>"
-        table_html += "</tr></thead><tbody class='text-center align-middle'>"
+        col_labels = sorted(col_labels)
 
-        for i, row in enumerate(data):
-            table_html += f"<tr><td>{row_labels[i]}</td>"
-            for cell in row:
-                table_html += f"<td>{cell}</td>"
-            table_html += "</tr>"
+        for participant in self.participants:
+            row_labels.append(participant.initials)
+            split_times = participant.swimsplittime_set.all()
+            if not split_times:
+                total_seconds = self._get_total_seconds(participant.result)
+                row = {
+                    int(self.session.swim_length.replace('m', '')): total_seconds
+                }
+            else:
+                row = {
+                    split.distance:
+                        self._get_total_seconds(split.split_time) for split in split_times
+                }
 
-        table_html += "</tbody></table> </div>"
+            row_data = [row.get(dist, None) for dist in col_labels]
+            data.append(row_data)
 
-        return table_html
+        data = list(map(list, zip(*data)))
 
-    def generate_number_cycles_chart(self) -> str:
-        """
-        Генерирует HTML код для столбчатой диаграммы количества циклов на лучшем отрезке.
-        """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-        col_labels = [participant.initials for participant in participants]
+        col_labels_with_ranges = []
+        previous_dist = 0
+        for dist in col_labels:
+            col_labels_with_ranges.append(f"{previous_dist}-{dist}м")
+            previous_dist = dist
 
-        # Получаем данные для количества циклов
-        number_cycles_data = NumberCycles.objects.filter(parsing_session=self.session).first()
-        if number_cycles_data:
-            data = number_cycles_data.data
-            values = [int(data.get(str(participant.id), 0)) if data.get(str(participant.id)) else 0 for participant in participants]
-        else:
-            values = [0] * len(participants)
-
-        fig = go.Figure(data=[
-            go.Bar(name='Кол-во циклов на лучшем отрезке', x=col_labels, y=values, marker_color='blue')
-        ])
+        fig = go.Figure(data=go.Heatmap(
+            z=data,
+            x=row_labels,
+            y=col_labels_with_ranges,
+            colorscale='YlGnBu',
+            text=[[f"{val:.2f}" if val is not None else "" for val in row] for row in data],
+            hoverinfo="text"
+        ))
 
         fig.update_layout(
-            yaxis_title='Кол-во циклов',
-            barmode='group'
+            xaxis_nticks=36,
+            yaxis={'title': 'Дистанция (м)'},
         )
 
-        config = {
-            'displayModeBar': False,
-            'displaylogo': False,
-            'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
-        }
+        heat_map_chart = fig.to_html(
+            full_html=False,
+            config={
+                'displayModeBar': False,
+                'displaylogo': False,
+                'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
+            }
+        )
 
-        return fig.to_html(full_html=False, config=config)
+        return heat_map_chart
 
-    def generate_pace_table(self) -> str:
+    def _get_total_seconds(self, time_obj: Optional[time]) -> float:
         """
-        Генерирует HTML код для таблицы темпа в циклах на минуту на лучшем отрезке.
+        Возвращает общее количество секунд для объекта времени.
+
+        :param time_obj: Объект времени.
+        :return: Общее количество секунд.
         """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-        col_labels = [participant.initials for participant in participants]
+        if time_obj:
+            return time_obj.minute * 60 + time_obj.second + time_obj.microsecond / 1e6
+        return 0.0
 
-        # Получаем данные для количества циклов и темпа
-        number_cycles_data = NumberCycles.objects.filter(parsing_session=self.session).first()
-        pace_data = Pace.objects.filter(parsing_session=self.session).first()
-
-        if number_cycles_data and pace_data:
-            cycles = number_cycles_data.data
-            paces = pace_data.data
-
-            # Рассчитываем темп
-            values = []
-            for participant in participants:
-                participant_id = str(participant.id)
-                if participant_id in cycles and participant_id in paces:
-                    try:
-                        cycle_count = int(cycles[participant_id])
-                        pace_value = self.parse_time(paces[participant_id])
-                        if pace_value is not None:
-                            pace_in_seconds = pace_value.minute * 60 + pace_value.second + pace_value.microsecond / 1e6
-                            pace_per_minute = (cycle_count / pace_in_seconds) * 60
-                            values.append(f"{pace_per_minute:.2f}")
-                        else:
-                            values.append("-")
-                    except (ValueError, ZeroDivisionError) as e:
-                        values.append("-")
-                else:
-                    values.append("-")
-        else:
-            values = [""] * len(participants)
-
-        # Генерируем HTML таблицы
-        table_html = "<div class='table-responsive'><table id='speed-table' class='table table-bordered table-hover'><thead><tr><th></th>"
-        for col in col_labels:
-            table_html += f"<th>{col}</th>"
-        table_html += "</tr></thead><tbody class='text-center align-middle'><tr><td>Темп ц/мин на лучшем отрезке</td>"
-        for cell in values:
-            table_html += f"<td>{cell}</td>"
-        table_html += "</tr></tbody></table></div>"
-
-        return table_html
-
-    def generate_underwater_part_table(self) -> str:
+    def _calculate_speed(self, participant: ProtocolData, distance: int) -> Optional[float]:
         """
-        Генерирует HTML код для таблицы подводной части.
+        Рассчитывает скорость для участника на определенной дистанции.
+
+        :param participant: Данные участника.
+        :param distance: Дистанция.
+        :return: Скорость (м/сек).
         """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-        row_labels = ["Подводная часть, м"]
-        col_labels = [participant.initials for participant in participants]
+        pool_length = int(self.session.pool_length.replace('m', ''))
+        split_time = participant.swimsplittime_set.filter(distance=distance).first()
+        if split_time:
+            total_seconds = self._get_total_seconds(split_time.split_time)
+            return pool_length / total_seconds
+        if participant.result:
+            total_seconds = self._get_total_seconds(participant.result)
+            return pool_length / total_seconds
+        return None
 
-        underwater_parts_data = UnderwaterPart.objects.filter(parsing_session=self.session)
-        underwater_parts = {}
-        for part in underwater_parts_data:
-            underwater_parts.update(part.data)
+    def _get_start_finish_difference_data(self, participants: List[ProtocolData]) -> List[float]:
+        """
+        Получает данные для разницы времени между стартом и финишем.
 
+        :param participants: Список участников.
+        :return: Список разниц во времени (сек).
+        """
         data = []
         for participant in participants:
-            participant_id = str(participant.id)
-            if participant_id in underwater_parts:
-                value = underwater_parts[participant_id]
-                data.append(f"{value}")
+            split_times = sorted(participant.swimsplittime_set.all(), key=lambda x: x.distance)
+            if split_times:
+                start_time = split_times[0].split_time
+                end_time = split_times[-1].split_time
+                start_seconds = self._get_total_seconds(start_time)
+                end_seconds = self._get_total_seconds(end_time)
+                time_difference = end_seconds - start_seconds
+                data.append(time_difference)
             else:
-                data.append("")
+                data.append(0)
+        return data
 
-        table_html = "<div class='table-responsive'> <table id='speed-table' class='table table-bordered table-hover'><thead><tr><th></th>"
-        for col in col_labels:
-            table_html += f"<th>{col}</th>"
-        table_html += "</tr></thead><tbody class='text-center align-middle'>"
-
-        table_html += f"<tr><td>{row_labels[0]}</td>"
-        for cell in data:
-            table_html += f"<td>{cell}</td>"
-        table_html += "</tr>"
-
-        table_html += "</tbody></table> </div>"
-
-        return table_html
-
-    def generate_underwater_part_chart(self) -> str:
+    def _get_number_cycles_data(
+            self, participants: List[ProtocolData], number_cycles_data: Optional[NumberCycles]
+        ) -> List[int]:
         """
-        Генерирует HTML код для столбчатой диаграммы подводной части.
-        """
-        participants = sorted(self.protocol_data, key=lambda x: x.start_position)
-        col_labels = [participant.initials for participant in participants]
+        Получает данные для количества циклов.
 
-        underwater_parts_data = UnderwaterPart.objects.filter(parsing_session=self.session)
+        :param participants: Список участников.
+        :param number_cycles_data: Данные о количестве циклов.
+        :return: Список значений количества циклов.
+        """
+        if not number_cycles_data:
+            return [0] * len(participants)
+
+        data = number_cycles_data.data
+        return [int(data.get(str(participant.id), 0))
+                if data.get(str(participant.id)) else 0
+                for participant in participants]
+
+    def _get_underwater_parts_data(
+            self, participants: List[ProtocolData], underwater_parts_data: List[UnderwaterPart]
+        ) -> List[float]:
+        """
+        Получает данные для подводной части.
+
+        :param participants: Список участников.
+        :param underwater_parts_data: Данные о подводной части.
+        :return: Список значений подводной части.
+        """
         underwater_parts = {}
         for part in underwater_parts_data:
             underwater_parts.update(part.data)
@@ -989,52 +660,508 @@ class ChartGenerator:
             else:
                 data.append(0)
 
-        fig = go.Figure(data=[go.Bar(
-            x=col_labels,
-            y=data,
-            name='Подводная часть (м)',
-            marker_color='green'
-        )])
+        return data
 
-        fig.update_layout(
-            xaxis_tickangle=-45,
-            yaxis_title='Подводная часть (м)',
-        )
 
-        config = {
-            'displayModeBar': False,
-            'displaylogo': False,
-            'modeBarButtonsToAdd': ['toImage', 'zoomIn2d', 'zoomOut2d', 'autoScale2d']
-        }
+class TableGenerator:
+    """Класс для генерации таблиц."""
 
-        underwater_part_chart = fig.to_html(full_html=False, config=config)
+    def __init__(self, session, participants):
+        self.session = session
+        self.participants = participants
 
-        return underwater_part_chart
-
-    def parse_time(self, time_str: str) -> time:
+    def generate_average_speed_table(self) -> str:
         """
-        Преобразует строку времени в объект time.
+        Генерирует HTML код для таблицы средней скорости.
 
-        :param time_str: строка времени в форматах
-        minute:second.millisecond или second.millisecond
-        :return: объект time
+        :return: HTML код таблицы.
         """
-        try:
-            if ':' in time_str:
-                # minute:second.millisecond
-                minute, rest = time_str.split(':')
-                second, millisecond = rest.split('.')
+        distances = sorted({
+            split.distance
+            for participant in self.participants
+            for split in participant.swimsplittime_set.all()
+        })
+
+        row_labels = [
+            f"{dist - int(self.session.pool_length.replace('m', '')) if i > 0 else 0}-{dist}м, м/сек"
+            for i, dist in enumerate(distances)
+        ] or [f"0-{self.session.swim_length.replace('m', '')}м, м/сек"]
+        col_labels = [participant.initials for participant in self.participants]
+        data = self._get_speed_data(self.participants, distances)
+
+        average_speed_table = self._generate_table_html(row_labels, col_labels, data)
+
+        return average_speed_table
+
+    def generate_speed_drop_table(self) -> str:
+        """
+        Генерирует HTML код для таблицы падения скорости.
+
+        :return: HTML код таблицы.
+        """
+        distances = sorted({
+            split.distance
+            for participant in self.participants
+            for split in participant.swimsplittime_set.all()
+        })
+
+        row_labels = [
+            f"{dist - int(self.session.pool_length.replace('m', '')) if i > 0 else 0}-{dist}м, %"
+            for i, dist in enumerate(distances)
+        ]
+        col_labels = [participant.initials for participant in self.participants]
+        data = self._get_speed_drop_data(self.participants, distances)
+
+        speed_drop_table = self._generate_table_html(row_labels, col_labels, data)
+
+        return speed_drop_table
+
+    def generate_leader_gap_table(self) -> str:
+        """
+        Генерирует HTML код для таблицы отставания от лидера.
+
+        :return: HTML код таблицы.
+        """
+        leader = next((p for p in self.participants if p.final_position == 1), None)
+
+        if not leader:
+            raise ValueError("Лидер не найден")
+
+        distances = sorted({
+            split.distance
+            for participant in self.participants
+            for split in participant.swimsplittime_set.all()
+        }) or [int(self.session.swim_length.replace('m', ''))]
+
+        row_labels = [
+            f"{dist - int(self.session.pool_length.replace('m', '')) if i > 0 else 0}-{dist}м"
+            for i, dist in enumerate(distances)
+        ] or [f"0-{self.session.swim_length}м"]
+        col_labels = [participant.initials for participant in self.participants]
+        data = self._get_leader_gap_data(self.participants, distances, leader)
+
+        leader_gap_table = self._generate_table_html(row_labels, col_labels, data)
+
+        return leader_gap_table
+
+    def generate_best_start_reaction_table(self) -> str:
+        """
+        Генерирует HTML код для таблицы лучшей стартовой реакции.
+
+        :return: HTML код таблицы.
+        """
+        col_labels = [participant.initials for participant in self.participants]
+        data = [
+            self._get_total_seconds(participant.reaction_time)
+            if participant.reaction_time else '-'
+            for participant in self.participants
+        ]
+        row_labels = ['Лучшая стартовая реакция, сек']
+
+        best_start_reaction_table = self._generate_table_html(row_labels, col_labels, [data])
+
+        return best_start_reaction_table
+
+    def generate_start_finish_difference_table(self) -> str:
+        """
+        Генерирует HTML код для таблицы лучшего процента изменения стартового и финишного отрезков.
+
+        :return: HTML код таблицы.
+        """
+        row_labels = ["% изменения стартового и финишного отрезков, с"]
+        col_labels = [participant.initials for participant in self.participants]
+
+        data = self._get_start_finish_difference_data(self.participants)
+
+        start_finish_difference_table = self._generate_table_html(row_labels, col_labels, [data])
+
+        return start_finish_difference_table
+
+    def generate_start_distance_table(self) -> str:
+        """
+        Генерирует HTML код для таблицы стартового отрезка 0-15.
+
+        :return: HTML код таблицы.
+        """
+        col_labels = [participant.initials for participant in self.participants]
+        row_labels = ['Стартовый отрезок 0-15, сек']
+
+        start_distance_data = StartDistance.objects.filter(parsing_session=self.session).first()
+        data = self._get_start_distance_data(self.participants, start_distance_data)
+
+        start_distance_table = self._generate_table_html(row_labels, col_labels, data)
+
+        return start_distance_table
+
+
+    def generate_pace_table(self) -> str:
+        """
+        Генерирует HTML код для таблицы темпа в циклах на минуту на лучшем отрезке.
+
+        :return: HTML код таблицы.
+        """
+        col_labels = [participant.initials for participant in self.participants]
+
+        number_cycles_data = NumberCycles.objects.filter(parsing_session=self.session).first()
+        pace_data = Pace.objects.filter(parsing_session=self.session).first()
+
+        data = self._get_pace_data(self.participants, number_cycles_data, pace_data)
+        row_labels = ['Темп ц/мин на лучшем отрезке']
+
+        pace_table = self._generate_table_html(row_labels, col_labels, [data])
+
+        return pace_table
+
+    def generate_underwater_part_table(self) -> str:
+        """
+        Генерирует HTML код для таблицы подводной части.
+
+        :return: HTML код таблицы.
+        """
+        row_labels = ["Подводная часть, м"]
+        col_labels = [participant.initials for participant in self.participants]
+
+        underwater_parts_data = UnderwaterPart.objects.filter(parsing_session=self.session)
+        data = self._get_underwater_parts_data(self.participants, underwater_parts_data)
+
+        underwater_part_table = self._generate_table_html(row_labels, col_labels, [data])
+        return underwater_part_table
+
+    def _generate_table_html(
+            self, row_labels: List[str], col_labels: List[str], data: List[List[Any]]
+        ) -> str:
+        """
+        Генерирует HTML код для таблицы.
+
+        :param row_labels: Список меток строк.
+        :param col_labels: Список меток колонок.
+        :param data: Список списков данных для таблицы.
+        :return: HTML код таблицы.
+        """
+        table_html = "<div class='table-responsive'> <table id='report-table'" \
+                     "class='table table-bordered table-hover'><thead><tr><th></th>"
+        for col in col_labels:
+            table_html += f"<th>{col}</th>"
+        table_html += "</tr></thead> <tbody class='text-center align-middle'>"
+
+        for i, row in enumerate(data):
+            table_html += f"<tr><td>{row_labels[i]}</td>"
+            for cell in row:
+                if cell is not None:
+                    try:
+                        cell = float(cell)
+                        table_html += f"<td>{cell:.2f}</td>"
+                    except ValueError:
+                        table_html += f"<td>{cell}</td>"
+                else:
+                    table_html += "<td></td>"
+            table_html += "</tr>"
+
+        table_html += "</tbody></table></div>"
+
+        return table_html
+
+    def _get_total_seconds(self, time_obj: Optional[time]) -> float:
+        """
+        Возвращает общее количество секунд для объекта времени.
+
+        :param time_obj: Объект времени.
+        :return: Общее количество секунд.
+        """
+        if time_obj:
+            return time_obj.minute * 60 + time_obj.second + time_obj.microsecond / 1e6
+        return 0.0
+
+    def _get_speed_data(
+            self, participants: List[ProtocolData], distances: List[int]
+        ) -> List[List[Optional[float]]]:
+        """
+        Получает данные о скорости для каждого участника и каждой дистанции.
+
+        :param participants: Список участников.
+        :param distances: Список дистанций.
+        :return: Данные о скорости.
+        """
+        data = []
+        pool_length = int(self.session.pool_length.replace('m', ''))
+        for dist in distances or [int(self.session.swim_length.replace('m', ''))]:
+            row = []
+            for participant in participants:
+                split_time = participant.swimsplittime_set.filter(distance=dist).first()
+                if split_time:
+                    total_seconds = self._get_total_seconds(split_time.split_time)
+                    speed = pool_length / total_seconds
+                elif not split_time and participant.result:
+                    total_seconds = self._get_total_seconds(participant.result)
+                    speed = pool_length / total_seconds
+                else:
+                    speed = None
+                row.append(speed)
+            data.append(row)
+        return data
+
+    def _get_speed_drop_data(
+            self, participants: List[ProtocolData], distances: List[int]
+        ) -> List[List[Optional[float]]]:
+        """
+        Получает данные о падении скорости для каждого участника и каждой дистанции.
+
+        :param participants: Список участников.
+        :param distances: Список дистанций.
+        :return: Данные о падении скорости.
+        """
+        speed_data = {participant.initials: [] for participant in participants}
+        pool_length = int(self.session.pool_length.replace('m', ''))
+
+        for participant in participants:
+            for dist in distances:
+                split_time = participant.swimsplittime_set.filter(distance=dist).first()
+                if split_time:
+                    total_seconds = self._get_total_seconds(split_time.split_time)
+                    speed = pool_length / total_seconds
+                    speed_data[participant.initials].append(speed)
+                else:
+                    speed_data[participant.initials].append('-')
+
+        data = []
+        for dist_index, dist in enumerate(distances):
+            row = []
+            for participant in participants:
+                initial_speed = speed_data[participant.initials][0]
+                current_speed = speed_data[participant.initials][dist_index]
+                if initial_speed and current_speed:
+                    speed_drop = (current_speed / initial_speed) * 100
+                elif dist_index == 0:
+                    # Первая дистанция всегда 100%
+                    speed_drop = 100.0
+                else:
+                    speed_drop = None
+                row.append(speed_drop)
+            data.append(row)
+
+        return data
+
+    def _get_leader_gap_data(
+            self, participants: List[ProtocolData], distances: List[int], leader: ProtocolData
+        ) -> List[List[Optional[float]]]:
+        """
+        Получает данные об отставании от лидера для каждого участника и каждой дистанции.
+
+        :param participants: Список участников.
+        :param distances: Список дистанций.
+        :param leader: Лидер гонки.
+        :return: Данные об отставании от лидера.
+        """
+        leader_times = {split.distance:
+                            self._get_total_seconds(split.split_time)
+                            for split in leader.swimsplittime_set.all()}
+        if not leader_times:
+            leader_times = {int(self.session.swim_length.replace('m', '')):
+                                self._get_total_seconds(leader.result)}
+
+        data = []
+        for dist in distances:
+            row = []
+            leader_time = leader_times.get(dist, 0)
+            for participant in participants:
+                if participant.final_position == 1:
+                    row.append(0.0)
+                else:
+                    split_time = participant.swimsplittime_set.filter(distance=dist).first()
+                    if split_time:
+                        total_seconds = self._get_total_seconds(split_time.split_time)
+                        gap = total_seconds - leader_time
+                    elif not split_time and participant.result:
+                        total_seconds = self._get_total_seconds(participant.result)
+                        gap = total_seconds - leader_time
+                    else:
+                        gap = None
+                    row.append(gap)
+            data.append(row)
+        return data
+
+    def _get_start_finish_difference_data(self, participants: List[ProtocolData]) -> List[float]:
+        """
+        Получает данные для разницы времени между стартом и финишем.
+
+        :param participants: Список участников.
+        :return: Список разниц во времени (сек).
+        """
+        data = []
+        for participant in participants:
+            split_times = sorted(participant.swimsplittime_set.all(), key=lambda x: x.distance)
+            if split_times:
+                start_time = split_times[0].split_time
+                end_time = split_times[-1].split_time
+                start_seconds = self._get_total_seconds(start_time)
+                end_seconds = self._get_total_seconds(end_time)
+                time_difference = end_seconds - start_seconds
+                data.append(time_difference)
             else:
-                # second.millisecond
-                minute = 0
-                second, millisecond = time_str.split('.')
+                data.append(0)
+        return data
 
-            minute = int(minute)
-            second = int(second)
-            millisecond = int(millisecond)
+    def _get_start_distance_data(
+            self, participants: List[ProtocolData], start_distance_data: Optional[StartDistance]
+        ) -> List[List[str]]:
+        """
+        Получает данные для стартового отрезка 0-15.
 
-            return time(minute=minute, second=second, microsecond=millisecond * 10000)
+        :param participants: Список участников.
+        :param start_distance_data: Данные о стартовом отрезке.
+        :return: Данные о стартовом отрезке.
+        """
+        if not start_distance_data:
+            return [[]]
 
-        except ValueError as error:
-            print(f"Ошибка при преобразовании значения времени: {error}, {time_str}")
-            return None
+        data = start_distance_data.data
+        return [[data.get(str(participant.id), '') for participant in participants]]
+
+    def _get_pace_data(
+            self, participants: List[ProtocolData],
+            number_cycles_data: Optional[NumberCycles], pace_data: Optional[Pace]
+        ) -> List[str]:
+        """
+        Получает данные для темпа.
+
+        :param participants: Список участников.
+        :param number_cycles_data: Данные о количестве циклов.
+        :param pace_data: Данные о темпе.
+        :return: Данные о темпе.
+        """
+        if not (number_cycles_data and pace_data):
+            return [""] * len(participants)
+
+        cycles = number_cycles_data.data
+        paces = pace_data.data
+
+        values = []
+        for participant in participants:
+            participant_id = str(participant.id)
+            if participant_id in cycles and participant_id in paces:
+                try:
+                    cycle_count = int(cycles[participant_id])
+                    pace_value = parse_time(paces[participant_id])
+                    if pace_value is not None:
+                        pace_in_seconds = self._get_total_seconds(pace_value)
+                        pace_per_minute = (cycle_count / pace_in_seconds) * 60
+                        values.append(f"{pace_per_minute:.2f}")
+                    else:
+                        values.append("-")
+                except (ValueError, ZeroDivisionError):
+                    values.append("-")
+            else:
+                values.append("-")
+        return values
+
+    def _get_underwater_parts_data(
+            self, participants: List[ProtocolData], underwater_parts_data: List[UnderwaterPart]
+        ) -> List[str]:
+        """
+        Получает данные для подводной части.
+
+        :param participants: Список участников.
+        :param underwater_parts_data: Данные о подводной части.
+        :return: Данные о подводной части.
+        """
+        underwater_parts = {}
+        for part in underwater_parts_data:
+            underwater_parts.update(part.data)
+
+        data = []
+        for participant in participants:
+            participant_id = str(participant.id)
+            if participant_id in underwater_parts:
+                value = underwater_parts[participant_id]
+                data.append(f"{value}")
+            else:
+                data.append("")
+
+        return data
+
+
+def parse_time(time_str: str) -> Optional[time]:
+    """
+    Преобразует строку времени в объект time.
+
+    :param time_str: строка времени в форматах minute:second.millisecond или second.millisecond.
+    :return: объект time.
+    """
+    try:
+        if ':' in time_str:
+            minute, rest = time_str.split(':')
+            second, millisecond = rest.split('.')
+        else:
+            minute = 0
+            second, millisecond = time_str.split('.')
+
+        minute = int(minute)
+        second = int(second)
+        millisecond = int(millisecond)
+
+        return time(minute=minute, second=second, microsecond=millisecond * 10000)
+    except ValueError as error:
+        print(f"Ошибка при преобразовании значения времени: {error}, {time_str}")
+        return None
+
+
+def save_raw_data(data: List[str], output_path: str) -> None:
+    """
+    Сохраняет сырые данные в текстовый файл.
+
+    :param data: Список строк для сохранения.
+    :param output_path: Путь к выходному текстовому файлу.
+    """
+    with open(output_path, 'w', encoding='utf-8') as f:
+        for line in data:
+            f.write(line + '\n')
+
+
+def save_parse_data(protocol_data: Dict[str, Any], session: ParsingSession) -> None:
+    """
+    Сохраняет спарсенные данные по протоколам в ProtocolData и SwimSplitTime.
+
+    :param protocol_data: Спарсенные данные из протоколов.
+    :param session: Сессия парсинга.
+    """
+    protocol_fields = [field.name for field in ProtocolData._meta.get_fields()]
+
+    sorted_participants = sorted(
+        protocol_data['participants'],
+        key=lambda x: x['final_position'] if x['final_position'] is not None else float('inf')
+    )
+
+    max_number_participants = int(get_setting_value('Number_participants'))
+
+    for participant_data in sorted_participants:
+        if (participant_data['result'] and
+                participant_data['final_position'] is not None and
+                participant_data['final_position'] <= max_number_participants):
+            participant_data['parsing_session'] = session
+            filtered_data = {
+                key: value for key, value in participant_data.items()if key in protocol_fields
+            }
+
+            protocol_entry = ProtocolData.objects.create(**filtered_data)
+
+            split_times_data = participant_data.get('split_times', [])
+            split_times = [
+                SwimSplitTime(protocol_data=protocol_entry, **split_time)
+                for split_time in split_times_data
+            ]
+
+            SwimSplitTime.objects.bulk_create(split_times)
+
+
+def get_setting_value(setting_name: str) -> Optional[str]:
+    """
+    Возвращает значение настройки по её имени.
+
+    :param setting_name: Название настройки.
+    :return: Значение настройки или None, если настройка не найдена.
+    """
+    try:
+        setting = ParsingSettings.objects.get(setting_name=setting_name)
+        return setting.setting_value
+    except ParsingSettings.DoesNotExist:
+        return None
